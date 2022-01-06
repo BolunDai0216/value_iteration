@@ -1,8 +1,11 @@
+from pdb import set_trace
+
 import numpy as np
 import torch
-
 from deep_differential_network.utils import jacobian
+
 from value_iteration.cost_functions import ArcTangent, SineQuadraticCost
+
 CUDA_AVAILABLE = torch.cuda.is_available()
 
 
@@ -12,25 +15,30 @@ class BaseSystem:
         self.n_act = 0
         self.x_lim = []
 
-    def check_dynamics(self, n_samples=10):
+    def check_dynamics(self, n_samples=1):
         # Checking Gradients:
-        to_x_test = torch.distributions.uniform.Uniform(-self.x_lim, self.x_lim).sample((n_samples,))
-        to_x_test = to_x_test.view(-1, self.n_state, 1).float().to(self.theta.device)
+        to_x_test = torch.distributions.uniform.Uniform(
+            -self.x_lim, self.x_lim).sample((n_samples,))
+        to_x_test = to_x_test.view(-1, self.n_state,
+                                   1).float().to(self.theta.device)
         np_x_test = to_x_test.cpu().numpy()
 
         np_a, np_B, np_dadx, np_dBdx = self.dyn(np_x_test, gradient=True)
-        to_a, to_B, to_dadx, to_dBdx = [x.cpu().numpy() for x in self.dyn(to_x_test, gradient=True)]
+        to_a, to_B, to_dadx, to_dBdx = [
+            x.cpu().numpy() for x in self.dyn(to_x_test, gradient=True)]
 
         assert np.allclose(to_a, np_a, atol=1.e-5)
         assert np.allclose(to_B, np_B, atol=1.e-5)
         assert np.allclose(to_dadx, np_dadx, atol=1.e-5)
         assert np.allclose(to_dBdx, np_dBdx, atol=1.e-5)
 
-        grad_auto_dadx = jacobian(lambda x: self.dyn(x)[-2], to_x_test).view(-1, self.n_state, self.n_state).cpu().numpy()
-        grad_auto_dBdx = jacobian(lambda x: self.dyn(x)[-1], to_x_test).view(-1, self.n_state, self.n_state, self.n_act).cpu().numpy()
+        grad_auto_dadx = jacobian(lambda x: self.dyn(
+            x)[-2], to_x_test).view(-1, self.n_state, self.n_state).cpu().numpy()
+        grad_auto_dBdx = jacobian(lambda x: self.dyn(
+            x)[-1], to_x_test).view(-1, self.n_state, self.n_state, self.n_act).cpu().numpy()
 
-        assert np.allclose(to_dBdx, grad_auto_dBdx, atol=1.e-3)
         assert np.allclose(to_dadx, grad_auto_dadx, atol=1.e-3)
+        assert np.allclose(to_dBdx, grad_auto_dBdx, atol=1.e-3)
 
     def dyn(self, x):
         raise AttributeError
@@ -74,13 +82,17 @@ class Pendulum(BaseSystem):
         self.gravity = -9.81
 
         # theta = [mass, length]
-        self.theta_min = torch.tensor([0.5, 0.5]).to(device).view(1, self.n_parameter, 1)
-        self.theta = torch.tensor([1., 1.]).to(device).view(1, self.n_parameter, 1)
-        self.theta_max = torch.tensor([2., 2.]).to(device).view(1, self.n_parameter, 1)
+        self.theta_min = torch.tensor([0.5, 0.5]).to(
+            device).view(1, self.n_parameter, 1)
+        self.theta = torch.tensor([1., 1.]).to(
+            device).view(1, self.n_parameter, 1)
+        self.theta_max = torch.tensor([2., 2.]).to(
+            device).view(1, self.n_parameter, 1)
 
         # LQR Baseline:
         out = self.dyn(self.x_target.numpy(), gradient=True)
-        self.A = out[2].reshape((1, self.n_state, self.n_state)).transpose((0, 2, 1))
+        self.A = out[2].reshape(
+            (1, self.n_state, self.n_state)).transpose((0, 2, 1))
         self.B = out[1].reshape((1, self.n_state, self.n_act))
 
         # Test dynamics:
@@ -93,13 +105,15 @@ class Pendulum(BaseSystem):
         cat = torch.cat
 
         is_numpy = True if isinstance(x, np.ndarray) else False
-        x = torch.from_numpy(x).to(self.theta.device) if isinstance(x, np.ndarray) else x
+        x = torch.from_numpy(x).to(
+            self.theta.device) if isinstance(x, np.ndarray) else x
         x = x.view(-1, self.n_state, 1)
         n_samples = x.shape[0]
 
         # Update the dynamics parameters with disturbance:
         if dtheta is not None:
-            dtheta = torch.from_numpy(dtheta).float() if isinstance(dtheta, np.ndarray) else dtheta
+            dtheta = torch.from_numpy(dtheta).float() if isinstance(
+                dtheta, np.ndarray) else dtheta
             dtheta = dtheta.view(-1, self.n_parameter, 1)
             assert dtheta.shape[0] in (1, n_samples)
 
@@ -113,8 +127,10 @@ class Pendulum(BaseSystem):
         mgl = theta[:, 0] * theta[:, 1]/2. * self.gravity
         mL2 = theta[:, 0] * theta[:, 1]**2
 
-        a = torch.cat([x[:, 1], -3. / mL2 * mgl * torch.sin(x[:, 0])], dim=1).view(-1, self.n_state, 1)
-        B = torch.zeros(x.shape[0], self.n_state, self.n_act).to(self.theta.device)
+        a = torch.cat([x[:, 1], -3. / mL2 * mgl * torch.sin(x[:, 0])],
+                      dim=1).view(-1, self.n_state, 1)
+        B = torch.zeros(x.shape[0], self.n_state,
+                        self.n_act).to(self.theta.device)
         B[:, 1] = 3. / mL2
 
         assert a.shape == (n_samples, self.n_state, 1)
@@ -127,10 +143,12 @@ class Pendulum(BaseSystem):
             dadx = cat([cat((zeros, -3. / mL2 * mgl * torch.cos(x[:, 0])), dim=1).unsqueeze(-1),
                         cat((ones, zeros), dim=1).unsqueeze(-1)], dim=1).view(-1, self.n_state, self.n_state)
 
-            dBdx = torch.zeros((x.shape[0], self.n_state, self.n_state, self.n_act), dtype=x.dtype, device=x.device)
+            dBdx = torch.zeros(
+                (x.shape[0], self.n_state, self.n_state, self.n_act), dtype=x.dtype, device=x.device)
 
             assert dadx.shape == (n_samples, self.n_state, self.n_state)
-            assert dBdx.shape == (n_samples, self.n_state, self.n_state, self.n_act)
+            assert dBdx.shape == (n_samples, self.n_state,
+                                  self.n_state, self.n_act)
             out = (a, B, dadx, dBdx)
 
         if is_numpy:
@@ -144,10 +162,13 @@ class Pendulum(BaseSystem):
         x = x.view(-1, self.n_state, 1)
         n_samples = x.shape[0]
 
-        dadth = torch.zeros(n_samples, self.n_parameter, self.n_state).to(x.device)
-        dadth[:, 1, 1:2] = 1.5 * self.gravity / self.theta[:, 1]**2 * torch.sin(x[:, 0])
+        dadth = torch.zeros(n_samples, self.n_parameter,
+                            self.n_state).to(x.device)
+        dadth[:, 1, 1:2] = 1.5 * self.gravity / \
+            self.theta[:, 1]**2 * torch.sin(x[:, 0])
 
-        dBdth = torch.zeros(n_samples, self.n_parameter, self.n_state, self.n_act).to(x.device)
+        dBdth = torch.zeros(n_samples, self.n_parameter,
+                            self.n_state, self.n_act).to(x.device)
         dBdth[:, 0, 1] = -3. / (self.theta[:, 0]**2 * self.theta[:, 1]**2)
         dBdth[:, 1, 1] = -6. / (self.theta[:, 0] * self.theta[:, 1]**3)
         out = dadth, dBdth
@@ -233,8 +254,10 @@ if __name__ == "__main__":
     sys = Pendulum()
 
     n_samples = 10
-    x_lim = torch.from_numpy(sys.x_lim).float() if isinstance(sys.x_lim, np.ndarray) else sys.x_lim
-    x_test = torch.distributions.uniform.Uniform(-x_lim, x_lim).sample((n_samples,))
+    x_lim = torch.from_numpy(sys.x_lim).float() if isinstance(
+        sys.x_lim, np.ndarray) else sys.x_lim
+    x_test = torch.distributions.uniform.Uniform(
+        -x_lim, x_lim).sample((n_samples,))
     # x_test = torch.tensor([np.pi / 2., 0.5]).view(1, sys.n_state, 1)
 
     dtheta = torch.zeros(1, sys.n_parameter, 1)
@@ -249,8 +272,10 @@ if __name__ == "__main__":
 
     a, B, dadx, dBdx = sys.dyn(x_test, gradient=True)
 
-    dadx_auto = torch.cat([jacobian(lambda x: sys.dyn(x)[0], x_test[i:i+1]) for i in range(n_samples)], dim=0)
-    dBdx_auto = torch.cat([jacobian(lambda x: sys.dyn(x)[1], x_test[i:i+1]) for i in range(n_samples)], dim=0)
+    dadx_auto = torch.cat([jacobian(lambda x: sys.dyn(
+        x)[0], x_test[i:i+1]) for i in range(n_samples)], dim=0)
+    dBdx_auto = torch.cat([jacobian(lambda x: sys.dyn(
+        x)[1], x_test[i:i+1]) for i in range(n_samples)], dim=0)
 
     err_a = (dadx_auto.view(dadx_shape) - dadx).abs().sum() / n_samples
     err_B = (dBdx_auto.view(dBdx_shape) - dBdx).abs().sum() / n_samples
@@ -263,11 +288,11 @@ if __name__ == "__main__":
 
     dadp, dBdp = sys.grad_dyn_theta(x_test)
 
-    dadp_auto = torch.cat([jacobian(lambda x: sys.dyn(x_test[i], dtheta=x)[0], dtheta) for i in range(n_samples)], dim=0)
-    dBdp_auto = torch.cat([jacobian(lambda x: sys.dyn(x_test[i], dtheta=x)[1], dtheta) for i in range(n_samples)], dim=0)
+    dadp_auto = torch.cat([jacobian(lambda x: sys.dyn(x_test[i], dtheta=x)[
+                          0], dtheta) for i in range(n_samples)], dim=0)
+    dBdp_auto = torch.cat([jacobian(lambda x: sys.dyn(x_test[i], dtheta=x)[
+                          1], dtheta) for i in range(n_samples)], dim=0)
 
     err_a = (dadp_auto.view(dadp_shape) - dadp).abs().sum() / n_samples
     err_B = (dBdp_auto.view(dBdp_shape) - dBdp).abs().sum() / n_samples
     assert err_a <= 1.e-5 and err_B <= 1.e-6
-
-

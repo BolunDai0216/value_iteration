@@ -56,7 +56,7 @@ class Cartpole(BaseSystem):
         self.check_dynamics()
 
         self.device = None
-        Pendulum.cuda(self) if cuda else Pendulum.cpu(self)
+        Cartpole.cuda(self) if cuda else Cartpole.cpu(self)
 
     def dyn(self, x, dtheta=None, gradient=False):
         cat = torch.cat
@@ -178,29 +178,47 @@ class Cartpole(BaseSystem):
 
             dB2dt = dB2dt_numerator / dB2dt_denominator
 
-            #          ∂B3     -sinθ[M+2m-m(sinθ)^2]
-            # dB3dt = ------ = ---------------------
-            #           ∂θ       l(M + m(sinθ)^2)^2
-            dB3dt_numerator = -s * (M + 2*m - m * (s**2))
+            #          ∂B3     sinθ[M+2m-m(sinθ)^2]
+            # dB3dt = ------ = --------------------
+            #           ∂θ      l(M + m(sinθ)^2)^2
+            dB3dt_numerator = s * (M + 2*m - m * (s**2))
             dB3dt_denominator = da3dt_denominator1
 
             dB3dt = dB3dt_numerator / dB3dt_denominator
 
+            # dadx = cat(
+            #     [
+            #         cat((zeros, zeros, ones, zeros), dim=1).unsqueeze(-1),
+            #         cat((zeros, zeros, zeros, ones), dim=1).unsqueeze(-1),
+            #         cat((zeros, da2dt, zeros, da2ddt), dim=1).unsqueeze(-1),
+            #         cat((zeros, da3dt, zeros, da3ddt), dim=1).unsqueeze(-1)
+            #     ]
+            # ).view(-1, self.n_state, self.n_state)
+
             dadx = cat(
                 [
-                    cat((zeros, zeros, ones, zeros), dim=1).unsqueeze(-1),
-                    cat((zeros, zeros, zeros, ones), dim=1).unsqueeze(-1),
-                    cat((zeros, da2dt, zeros, da2ddt), dim=1).unsqueeze(-1),
-                    cat((zeros, da3dt, zeros, da3ddt), dim=1).unsqueeze(-1)
+                    cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
+                    cat((zeros, zeros, da2dt, da3dt), dim=1).unsqueeze(-1),
+                    cat((ones, zeros, zeros, zeros), dim=1).unsqueeze(-1),
+                    cat((zeros, ones, da2ddt, da3ddt), dim=1).unsqueeze(-1)
                 ]
             ).view(-1, self.n_state, self.n_state)
+
+            # dBdx = cat(
+            #     [
+            #         cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
+            #         cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
+            #         cat((zeros, dB2dt, zeros, zeros), dim=1).unsqueeze(-1),
+            #         cat((zeros, dB3dt, zeros, zeros), dim=1).unsqueeze(-1)
+            #     ]
+            # ).view(-1, self.n_state, self.n_state, self.n_act)
 
             dBdx = cat(
                 [
                     cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
+                    cat((zeros, zeros, dB2dt, dB3dt), dim=1).unsqueeze(-1),
                     cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
-                    cat((zeros, dB2dt, zeros, zeros), dim=1).unsqueeze(-1),
-                    cat((zeros, dB3dt, zeros, zeros), dim=1).unsqueeze(-1)
+                    cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1)
                 ]
             ).view(-1, self.n_state, self.n_state, self.n_act)
 
