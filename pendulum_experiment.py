@@ -4,7 +4,7 @@ import numpy as np
 
 try:
     import matplotlib as mpl
-    mpl.use("Qt5Agg")
+    # mpl.use("Qt5Agg")
 
 except ImportError as e:
     pass
@@ -16,9 +16,12 @@ from value_iteration.pendulum import PendulumLogCos
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-alg", dest='algorithm', type=str, default="rFVI", required=False, help="Specify the Algorithm.")
-    parser.add_argument("-seed", dest='seed', type=int, default=42, required=False, help="Specifies the random seed")
-    parser.add_argument("-load", dest='load', type=int, default=1, required=False, help="Specifies whether to load an existing model.")
+    parser.add_argument("-alg", dest='algorithm', type=str,
+                        default="rFVI", required=False, help="Specify the Algorithm.")
+    parser.add_argument("-seed", dest='seed', type=int, default=42,
+                        required=False, help="Specifies the random seed")
+    parser.add_argument("-load", dest='load', type=int, default=1,
+                        required=False, help="Specifies whether to load an existing model.")
     args = parser.parse_args()
     assert args.algorithm.lower() in ["cfvi", "rfvi"]
 
@@ -34,13 +37,12 @@ if __name__ == "__main__":
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.benchmark = True
 
-    model_path = None
+    model_path = "data/cfvi_step_150.torch"
     if args.algorithm.lower() == 'rfvi' and bool(args.load):
         model_path = 'data/rFVI.torch'
 
     if args.algorithm.lower() == 'cfvi' and bool(args.load):
         model_path = 'data/cFVI.torch'
-
 
     # Define Hyper-parameters:
     hyper = {
@@ -51,7 +53,7 @@ if __name__ == "__main__":
         # Value Function:
         'val_class': TrigonometricQuadraticNetwork,
         'checkpoint': model_path,
-        'plot': False,
+        'plot': True,
 
         # System Specification:
         'system_class': PendulumLogCos,

@@ -131,28 +131,61 @@ class Cartpole(BaseSystem):
             #          ∂a2     ml(dθcosθ-g+2g(cosθ)^2)  (ml)^2cosθsinθ(2dθsinθ+2gcosθsinθ)
             # da2dt = ------ = ---------------------- - ---------------------------------
             #           ∂θ         M+m-ml(cosθ)^2              (M+m-ml(cosθ)^2)^2
+            da2dt_numerator1 = m * l * \
+                (x[:, 3] * c - self.gravity + 2 * self.gravity * c**2)
+            da2dt_numerator2 = ((m * l)**2) * c * s * \
+                (2 * x[:, 3] * s + 2 * self.gravity * c * s)
+
+            da2dt_denominator1 = dd_pos_a_denominator
+            da2dt_denominator2 = dd_pos_a_denominator**2
+
+            da2dt = (da2dt_numerator1 / da2dt_denominator1) - \
+                (da2dt_numerator2 / da2dt_denominator2)
 
             #           ∂a2          mlsinθ
             # da2ddt = ------- = --------------
             #           ∂(dθ)    M+m-ml(cosθ)^2
+            da2ddt_denominator = da2dt_denominator1
+            da2ddt = (m * l * s) / da2ddt_denominator
 
             #          ∂a3     (2msinθcosθ)[mlsinθcosθ(dθ)^2+(M+m)gsinθ]   ml(dθ)^2(cosθ)^2 - ml(dθ)^2(sinθ)^2 + (M+m)gcosθ
             # da3dt = ------ = ---------------------------------------- - ------------------------------------------------
             #           ∂θ                l(M + m(sinθ)^2)^2                              l(M + m(sinθ)^2)
+            da3dt_numerator1 = (2*m*s*c) * \
+                (m*l*s*c*(x[:, 3]**2)+(M+m)*self.gravity*s)
+            da3dt_numerator2 = m*l*(x[:, 3]**2) * \
+                (c**2 - s**2) + (M+m)*self.gravity*c
+
+            da3dt_denominator1 = l * (M + m * (s**2))**2
+            da3dt_denominator2 = dd_ang_a_denominator
+
+            da3dt = (da3dt_numerator1 / da3dt_denominator1) - \
+                (da3dt_numerator2 / da3dt_denominator2)
 
             #            ∂a3      -2ml(dθ)sinθcosθ
             # da3ddt = -------- = ----------------
             #            ∂(dθ)    l(M + m(sinθ)^2)
+            da3ddt_numerator = -2 * m * l * x[:, 3] * s * c
+            da3ddt_denominator = dd_ang_a_denominator
+
+            da3ddt = da3ddt_numerator / da3ddt_denominator
 
             #          ∂B2        -2mlsinθcosθ
             # dB2dt = ------ = ------------------
             #           ∂θ     (M+m-ml(cosθ)^2)^2
+            dB2dt_numerator = -2 * m * l * s * c
+            dB2dt_denominator = da2dt_denominator1 ** 2
+
+            dB2dt = dB2dt_numerator / dB2dt_denominator
 
             #          ∂B3     -sinθ[M+2m-m(sinθ)^2]
             # dB3dt = ------ = ---------------------
             #           ∂θ       l(M + m(sinθ)^2)^2
+            dB3dt_numerator = -s * (M + 2*m - m * (s**2))
+            dB3dt_denominator = da3dt_denominator1
 
-            # TODO
+            dB3dt = dB3dt_numerator / dB3dt_denominator
+
             dadx = cat(
                 [
                     cat((zeros, zeros, ones, zeros), dim=1).unsqueeze(-1),
@@ -161,9 +194,7 @@ class Cartpole(BaseSystem):
                     cat((zeros, da3dt, zeros, da3ddt), dim=1).unsqueeze(-1)
                 ]
             ).view(-1, self.n_state, self.n_state)
-            set_trace()
 
-            # TODO
             dBdx = cat(
                 [
                     cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
