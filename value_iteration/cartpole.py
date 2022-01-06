@@ -186,32 +186,14 @@ class Cartpole(BaseSystem):
 
             dB3dt = dB3dt_numerator / dB3dt_denominator
 
-            # dadx = cat(
-            #     [
-            #         cat((zeros, zeros, ones, zeros), dim=1).unsqueeze(-1),
-            #         cat((zeros, zeros, zeros, ones), dim=1).unsqueeze(-1),
-            #         cat((zeros, da2dt, zeros, da2ddt), dim=1).unsqueeze(-1),
-            #         cat((zeros, da3dt, zeros, da3ddt), dim=1).unsqueeze(-1)
-            #     ]
-            # ).view(-1, self.n_state, self.n_state)
-
             dadx = cat(
                 [
                     cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
                     cat((zeros, zeros, da2dt, da3dt), dim=1).unsqueeze(-1),
                     cat((ones, zeros, zeros, zeros), dim=1).unsqueeze(-1),
                     cat((zeros, ones, da2ddt, da3ddt), dim=1).unsqueeze(-1)
-                ]
+                ], dim=1
             ).view(-1, self.n_state, self.n_state)
-
-            # dBdx = cat(
-            #     [
-            #         cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
-            #         cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
-            #         cat((zeros, dB2dt, zeros, zeros), dim=1).unsqueeze(-1),
-            #         cat((zeros, dB3dt, zeros, zeros), dim=1).unsqueeze(-1)
-            #     ]
-            # ).view(-1, self.n_state, self.n_state, self.n_act)
 
             dBdx = cat(
                 [
@@ -219,7 +201,7 @@ class Cartpole(BaseSystem):
                     cat((zeros, zeros, dB2dt, dB3dt), dim=1).unsqueeze(-1),
                     cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
                     cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1)
-                ]
+                ], dim=1
             ).view(-1, self.n_state, self.n_state, self.n_act)
 
             assert dadx.shape == (n_samples, self.n_state, self.n_state)
