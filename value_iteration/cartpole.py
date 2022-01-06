@@ -271,12 +271,12 @@ class Cartpole(BaseSystem):
         da3dl_denominator = (l**2)*(m*(s**2)+M)
         da3dl = da3dl_numerator / da3dl_denominator
 
-        dadth[:, 0, 2] = da2dM
-        dadth[:, 1, 2] = da2dm
-        dadth[:, 2, 2] = da2dl
-        dadth[:, 0, 3] = da3dM
-        dadth[:, 1, 3] = da3dm
-        dadth[:, 2, 3] = da3dl
+        dadth[:, 0, 2] = da2dM.squeeze()
+        dadth[:, 1, 2] = da2dm.squeeze()
+        dadth[:, 2, 2] = da2dl.squeeze()
+        dadth[:, 0, 3] = da3dM.squeeze()
+        dadth[:, 1, 3] = da3dm.squeeze()
+        dadth[:, 2, 3] = da3dl.squeeze()
 
         dBdth = torch.zeros(n_samples, self.n_parameter,
                             self.n_state, self.n_act).to(x.device)
@@ -301,24 +301,24 @@ class Cartpole(BaseSystem):
         dB2dl_denominator = dB2dM_denominator
         dB2dl = dB2dl_numerator / dB2dl_denominator
 
-        #           ∂B3         -cosθ
+        #           ∂B3         cosθ
         # dB3dM =  ----- = ----------------
         #           ∂M     l[m(sinθ)^2+M]^2
         dB3dM_denominator = l*(M+m*(s**2))**2
-        dB3dM = -c / dB3dM_denominator
+        dB3dM = c / dB3dM_denominator
 
-        #           ∂B3     -cosθ(sinθ)^2
+        #           ∂B3      cosθ(sinθ)^2
         # dB3dm =  ----- = ----------------
         #           ∂m     l[m(sinθ)^2+M]^2
-        dB3dm_numerator = -c * (s**2)
+        dB3dm_numerator = c * (s**2)
         dB3dm_denominator = dB3dM_denominator
         dB3dm = dB3dm_numerator / dB3dm_denominator
 
-        #           ∂B3         -cosθ
+        #           ∂B3          cosθ
         # dB3dl =  ----- = ----------------
         #           ∂l     l^2[m(sinθ)^2+M]
         dB3dl_denominator = (l**2)*(M+m*(s**2))
-        dB3dl = -c / dB3dl_denominator
+        dB3dl = c / dB3dl_denominator
 
         dBdth[:, 0, 2] = dB2dM
         dBdth[:, 1, 2] = dB2dm
@@ -329,10 +329,10 @@ class Cartpole(BaseSystem):
 
         out = dadth, dBdth
 
-        set_trace()
-
         if is_numpy:
             out = [array.numpy() for array in out]
+
+        return out
 
     def cuda(self, device=None):
         self.theta_min = self.theta_min.cuda(device=device)
@@ -368,6 +368,51 @@ def main():
 
     # Create system:
     sys = Cartpole()
+
+    n_samples = 10
+    x_lim = torch.from_numpy(sys.x_lim).float() if isinstance(
+        sys.x_lim, np.ndarray) else sys.x_lim
+    x_test = torch.distributions.uniform.Uniform(
+        -x_lim, x_lim).sample((n_samples,))
+    # x_test = torch.tensor([np.pi / 2., 0.5]).view(1, sys.n_state, 1)
+
+    dtheta = torch.zeros(1, sys.n_parameter, 1)
+
+    if cuda:
+        sys, x_test, dtheta = sys.cuda(), x_test.cuda(), dtheta.cuda()
+
+    ###################################################################################################################
+    # Test dynamics gradient w.r.t. state:
+    dadx_shape = (n_samples, sys.n_state, sys.n_state)
+    dBdx_shape = (n_samples, sys.n_state, sys.n_state, sys.n_act)
+
+    a, B, dadx, dBdx = sys.dyn(x_test, gradient=True)
+
+    dadx_auto = torch.cat([jacobian(lambda x: sys.dyn(
+        x)[0], x_test[i:i+1]) for i in range(n_samples)], dim=0)
+    dBdx_auto = torch.cat([jacobian(lambda x: sys.dyn(
+        x)[1], x_test[i:i+1]) for i in range(n_samples)], dim=0)
+
+    err_a = (dadx_auto.view(dadx_shape) - dadx).abs().sum() / n_samples
+    err_B = (dBdx_auto.view(dBdx_shape) - dBdx).abs().sum() / n_samples
+    assert err_a <= 1.e-5 and err_B <= 1.e-6
+
+    ###################################################################################################################
+    # Test dynamics gradient w.r.t. model parameter:
+    dadp_shape = (n_samples, sys.n_parameter, sys.n_state)
+    dBdp_shape = (n_samples, sys.n_parameter, sys.n_state, sys.n_act)
+
+    dadp, dBdp = sys.grad_dyn_theta(x_test)
+
+    dadp_auto = torch.cat([jacobian(lambda x: sys.dyn(x_test[i], dtheta=x)[
+                          0], dtheta) for i in range(n_samples)], dim=0)
+    dBdp_auto = torch.cat([jacobian(lambda x: sys.dyn(x_test[i], dtheta=x)[
+                          1], dtheta) for i in range(n_samples)], dim=0)
+
+    err_a = (dadp_auto.view(dadp_shape) - dadp).abs().sum() / n_samples
+    err_B = (dBdp_auto.view(dBdp_shape) - dBdp).abs().sum() / n_samples
+
+    assert err_a <= 1.e-5 and err_B <= 1.e-6
 
 
 if __name__ == "__main__":
