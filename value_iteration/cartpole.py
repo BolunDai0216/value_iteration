@@ -355,6 +355,42 @@ class Cartpole(BaseSystem):
         return self
 
 
+class CartpoleLogCos(Cartpole):
+    name = "Cartpole_LogCosCost"
+
+    def __init__(self,  Q, R, cuda=False, **kwargs):
+
+        # Create the dynamics:
+        super(CartpoleLogCos, self).__init__(cuda=cuda, **kwargs)
+        self.u_lim = torch.tensor([10.0, ])
+
+        assert Q.size == self.n_state and np.all(Q > 0.0)
+        self.Q = np.diag(Q).reshape((self.n_state, self.n_state))
+
+        assert R.size == self.n_act and np.all(R > 0.0)
+        self.R = np.diag(R).reshape((self.n_act, self.n_act))
+
+        # Create the Reward Function:
+        self.q = SineQuadraticCost(self.Q, np.array([1.0, 0.0]), cuda=cuda)
+
+        # Determine beta s.t. the curvature at u = 0 is identical to 2R
+        beta = (4. * self.u_lim[0] ** 2 / np.pi * self.R)[0, 0].item()
+        self.r = ArcTangent(alpha=self.u_lim.numpy()[0], beta=beta)
+
+    def rwd(self, x, u):
+        return self.q(x) + self.r(u)
+
+    def cuda(self, device=None):
+        super(CartpoleLogCos, self).cuda(device=device)
+        self.q.cuda(device=device)
+        return self
+
+    def cpu(self):
+        super(CartpoleLogCos, self).cpu()
+        self.q.cpu()
+        return self
+
+
 def main():
     from deep_differential_network.utils import jacobian
 
