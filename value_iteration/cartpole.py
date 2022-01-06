@@ -1,9 +1,12 @@
+from pdb import set_trace
+
 import numpy as np
 import torch
-
 from deep_differential_network.utils import jacobian
+
 from value_iteration.cost_functions import ArcTangent, SineQuadraticCost
 from value_iteration.pendulum import BaseSystem
+
 CUDA_AVAILABLE = torch.cuda.is_available()
 
 
@@ -78,14 +81,130 @@ class Cartpole(BaseSystem):
             theta = self.theta
             theta = theta
 
+        c = torch.cos(x[:, 1])
+        s = torch.sin(x[:, 1])
+        M = theta[:, 0]
+        m = theta[:, 1]
+        l = theta[:, 2]
+
+        # mglsinθcosθ + mldθsinθ
+        # ----------------------
+        #     M+m-ml(cosθ)^2
+        dd_pos_a_numerator = m * self.gravity * l * s * c + m * l * x[:, 3] * s
+        dd_pos_a_denominator = M + m - m * l * c**2
+        dd_pos_a = dd_pos_a_numerator / dd_pos_a_denominator
+
+        # -(M+m)gsinθ - ml(dθ^2)sinθcosθ
+        # ------------------------------
+        #        l(M + m(sinθ)^2)
+        dd_ang_a_numerator = -(M + m) * self.gravity * \
+            s - m * l * (x[:, 3]**2) * s * c
+        dd_ang_a_denominator = l * (M + m * (s**2))
+        dd_ang_a = dd_ang_a_numerator / dd_ang_a_denominator
+
+        #            1
+        # ----------------------
+        #     M+m-ml(cosθ)^2
+        dd_pos_B_denominator = dd_pos_a_denominator
+        dd_pos_B = 1.0 / dd_pos_B_denominator
+
+        #              -cosθ
+        # ------------------------------
+        #        l(M + m(sinθ)^2)
+        dd_ang_B_denominator = dd_ang_a_denominator
+        dd_ang_B = -c / dd_ang_B_denominator
+
+        a = torch.cat([x[:, 2], x[:, 3], dd_pos_a, dd_ang_a],
+                      dim=1).view(-1, self.n_state, 1)
+        B = torch.zeros(x.shape[0], self.n_state,
+                        self.n_act).to(self.theta.device)
+        B[:, 2] = dd_pos_B
+        B[:, 3] = dd_ang_B
+
+        assert a.shape == (n_samples, self.n_state, 1)
+        assert B.shape == (n_samples, self.n_state, self.n_act)
+        out = (a, B)
+
+        if gradient:
+            zeros, ones = torch.zeros_like(x[:, 1]), torch.ones_like(x[:, 1])
+
+            #          ∂a2     ml(dθcosθ-g+2g(cosθ)^2)  (ml)^2cosθsinθ(2dθsinθ+2gcosθsinθ)
+            # da2dt = ------ = ---------------------- - ---------------------------------
+            #           ∂θ         M+m-ml(cosθ)^2              (M+m-ml(cosθ)^2)^2
+
+            #           ∂a2          mlsinθ
+            # da2ddt = ------- = --------------
+            #           ∂(dθ)    M+m-ml(cosθ)^2
+
+            #          ∂a3     (2msinθcosθ)[mlsinθcosθ(dθ)^2+(M+m)gsinθ]   ml(dθ)^2(cosθ)^2 - ml(dθ)^2(sinθ)^2 + (M+m)gcosθ
+            # da3dt = ------ = ---------------------------------------- - ------------------------------------------------
+            #           ∂θ                l(M + m(sinθ)^2)^2                              l(M + m(sinθ)^2)
+
+            #            ∂a3      -2ml(dθ)sinθcosθ
+            # da3ddt = -------- = ----------------
+            #            ∂(dθ)    l(M + m(sinθ)^2)
+
+            #          ∂B2        -2mlsinθcosθ
+            # dB2dt = ------ = ------------------
+            #           ∂θ     (M+m-ml(cosθ)^2)^2
+
+            #          ∂B3     -sinθ[M+2m-m(sinθ)^2]
+            # dB3dt = ------ = ---------------------
+            #           ∂θ       l(M + m(sinθ)^2)^2
+
+            # TODO
+            dadx = cat(
+                [
+                    cat((zeros, zeros, ones, zeros), dim=1).unsqueeze(-1),
+                    cat((zeros, zeros, zeros, ones), dim=1).unsqueeze(-1),
+                    cat((zeros, da2dt, zeros, da2ddt), dim=1).unsqueeze(-1),
+                    cat((zeros, da3dt, zeros, da3ddt), dim=1).unsqueeze(-1)
+                ]
+            ).view(-1, self.n_state, self.n_state)
+            set_trace()
+
+            # TODO
+            dBdx = cat(
+                [
+                    cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
+                    cat((zeros, zeros, zeros, zeros), dim=1).unsqueeze(-1),
+                    cat((zeros, dB2dt, zeros, zeros), dim=1).unsqueeze(-1),
+                    cat((zeros, dB3dt, zeros, zeros), dim=1).unsqueeze(-1)
+                ]
+            ).view(-1, self.n_state, self.n_state, self.n_act)
+
+            assert dadx.shape == (n_samples, self.n_state, self.n_state)
+            assert dBdx.shape == (n_samples, self.n_state,
+                                  self.n_state, self.n_act)
+            out = (a, B, dadx, dBdx)
+
+        if is_numpy:
+            out = [array.cpu().detach().numpy() for array in out]
+
+        return out
+
     def grad_dyn_theta(self, x):
         pass
 
     def cuda(self, device=None):
-        pass
+        self.theta_min = self.theta_min.cuda(device=device)
+        self.theta = self.theta.cuda(device=device)
+        self.theta_max = self.theta_max.cuda(device=device)
+
+        self.u_lim = self.u_lim.cuda(device=device)
+        self.x_lim = self.x_lim.cuda(device=device)
+        self.device = self.theta.device
+        return self
 
     def cpu(self):
-        pass
+        self.theta_min = self.theta_min.cpu()
+        self.theta = self.theta.cpu()
+        self.theta_max = self.theta_max.cpu()
+
+        self.u_lim = self.u_lim.cpu()
+        self.x_lim = self.x_lim.cpu()
+        self.device = self.theta.device
+        return self
 
 
 def main():
