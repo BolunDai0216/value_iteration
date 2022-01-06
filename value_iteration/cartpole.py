@@ -215,7 +215,124 @@ class Cartpole(BaseSystem):
         return out
 
     def grad_dyn_theta(self, x):
-        pass
+        is_numpy = True if isinstance(x, np.ndarray) else False
+        x = torch.from_numpy(x) if isinstance(x, np.ndarray) else x
+        x = x.view(-1, self.n_state, 1)
+        n_samples = x.shape[0]
+
+        c = torch.cos(x[:, 1])
+        s = torch.sin(x[:, 1])
+        M = self.theta[:, 0]
+        m = self.theta[:, 1]
+        l = self.theta[:, 2]
+
+        dadth = torch.zeros(n_samples, self.n_parameter,
+                            self.n_state).to(x.device)
+
+        #           ∂a2    -ml(2dθsinθ+2gcosθsinθ)
+        # da2dM =  ----- = -----------------------
+        #           ∂M       2[-ml(cosθ)^2+M+m]^2
+        da2dM_numerator = -m*l*(2*x[:, 3]*s + 2*self.gravity*c*s)
+        da2dM_denominator = 2 * (-m*l*(c**2)+M+m)**2
+        da2dM = da2dM_numerator / da2dM_denominator
+
+        #           ∂a2        Mlsinθ(dθ+gcosθ)
+        # da2dm =  ----- = -----------------------
+        #           ∂m       [-ml(cosθ)^2+M+m]^2
+        da2dm_numerator = M*l*s*(x[:, 3] + self.gravity*c)
+        da2dm_denominator = da2dM_denominator / 2
+        da2dm = da2dm_numerator / da2dm_denominator
+
+        #           ∂a2     msinθ(M+m)(dθ+g*cosθ)
+        # da2dl =  ----- = -----------------------
+        #           ∂l       [-ml(cosθ)^2+M+m]^2
+        da2dl_numerator = m*s*(M+m)*(x[:, 3] + self.gravity*c)
+        da2dl_denominator = da2dm_denominator
+        da2dl = da2dl_numerator / da2dl_denominator
+
+        #           ∂a3    mcosθsinθ[l(dθ)^2+gcosθ]
+        # da3dM =  ----- = -----------------------
+        #           ∂M        l[m(sinθ)^2+M]^2
+        da3dM_numerator = m*c*s*(l*(x[:, 3]**2) + self.gravity*c)
+        da3dM_denominator = l*(m*(s**2)+M)**2
+        da3dM = da3dM_numerator / da3dM_denominator
+
+        #           ∂a3    -Mcosθsinθ[l(dθ)^2+gcosθ]
+        # da3dm =  ----- = -------------------------
+        #           ∂m         l[m(sinθ)^2+M]^2
+        da3dm_numerator = -M*c*s*(l*(x[:, 3]**2) + self.gravity*c)
+        da3dm_denominator = l*(m*(s**2)+M)**2
+        da3dm = da3dm_numerator / da3dm_denominator
+
+        #           ∂a3      (M+m)gsinθ
+        # da3dl =  ----- = ----------------
+        #           ∂l     l^2[m(sinθ)^2+M]
+        da3dl_numerator = (M+m)*self.gravity*s
+        da3dl_denominator = (l**2)*(m*(s**2)+M)
+        da3dl = da3dl_numerator / da3dl_denominator
+
+        dadth[:, 0, 2] = da2dM
+        dadth[:, 1, 2] = da2dm
+        dadth[:, 2, 2] = da2dl
+        dadth[:, 0, 3] = da3dM
+        dadth[:, 1, 3] = da3dm
+        dadth[:, 2, 3] = da3dl
+
+        dBdth = torch.zeros(n_samples, self.n_parameter,
+                            self.n_state, self.n_act).to(x.device)
+
+        #           ∂B2            -1
+        # dB2dM =  ----- = -------------------
+        #           ∂M     [-ml(cosθ)^2+M+m]^2
+        dB2dM_denominator = (M+m-m*l*(c**2))**2
+        dB2dM = -1 / dB2dM_denominator
+
+        #           ∂B2       l(cosθ)^2-1
+        # dB2dm =  ----- = -------------------
+        #           ∂m     [-ml(cosθ)^2+M+m]^2
+        dB2dm_numerator = l * (c**2) - 1
+        dB2dm_denominator = dB2dM_denominator
+        dB2dm = dB2dm_numerator / dB2dm_denominator
+
+        #           ∂B2         m(cosθ)^2
+        # dB2dl =  ----- = -------------------
+        #           ∂l     [-ml(cosθ)^2+M+m]^2
+        dB2dl_numerator = m * (c**2)
+        dB2dl_denominator = dB2dM_denominator
+        dB2dl = dB2dl_numerator / dB2dl_denominator
+
+        #           ∂B3         -cosθ
+        # dB3dM =  ----- = ----------------
+        #           ∂M     l[m(sinθ)^2+M]^2
+        dB3dM_denominator = l*(M+m*(s**2))**2
+        dB3dM = -c / dB3dM_denominator
+
+        #           ∂B3     -cosθ(sinθ)^2
+        # dB3dm =  ----- = ----------------
+        #           ∂m     l[m(sinθ)^2+M]^2
+        dB3dm_numerator = -c * (s**2)
+        dB3dm_denominator = dB3dM_denominator
+        dB3dm = dB3dm_numerator / dB3dm_denominator
+
+        #           ∂B3         -cosθ
+        # dB3dl =  ----- = ----------------
+        #           ∂l     l^2[m(sinθ)^2+M]
+        dB3dl_denominator = (l**2)*(M+m*(s**2))
+        dB3dl = -c / dB3dl_denominator
+
+        dBdth[:, 0, 2] = dB2dM
+        dBdth[:, 1, 2] = dB2dm
+        dBdth[:, 2, 2] = dB2dl
+        dBdth[:, 0, 3] = dB3dM
+        dBdth[:, 1, 3] = dB3dm
+        dBdth[:, 2, 3] = dB3dl
+
+        out = dadth, dBdth
+
+        set_trace()
+
+        if is_numpy:
+            out = [array.numpy() for array in out]
 
     def cuda(self, device=None):
         self.theta_min = self.theta_min.cuda(device=device)
