@@ -297,7 +297,7 @@ def run_experiment(hyper):
             ax_val.plot(xi_tra[:, 0], xi_tra[:, 1], c="k", alpha=0.25)
             ax_pi.plot(xi_tra[:, 0], xi_tra[:, 1], c="k", alpha=0.25)
 
-        plt.savefig("figures/value_function_pendulum.png", dpi=200,
+        plt.savefig(f"figures/value_function_{system.name}.png", dpi=200,
                     transparent=False, bbox_inches="tight")
 
         fig = plt.figure(figsize=(12, 5))
@@ -346,5 +346,5 @@ def run_experiment(hyper):
             ax_xv.plot(xi_tra[:, -1], xi_tra[:, 1], c="b", alpha=0.25)
             ax_u.plot(t, u_tra[:, i, 0, 0], c="b", alpha=0.25)
 
-        plt.savefig("figures/trajectories_pendulum.png", dpi=200,
+        plt.savefig(f"figures/trajectories_{system.name}.png", dpi=200,
                     transparent=False, bbox_inches="tight")

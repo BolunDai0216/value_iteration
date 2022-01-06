@@ -358,7 +358,7 @@ class Cartpole(BaseSystem):
 class CartpoleLogCos(Cartpole):
     name = "Cartpole_LogCosCost"
 
-    def __init__(self,  Q, R, cuda=False, **kwargs):
+    def __init__(self, Q, R, cuda=False, **kwargs):
 
         # Create the dynamics:
         super(CartpoleLogCos, self).__init__(cuda=cuda, **kwargs)
@@ -371,7 +371,8 @@ class CartpoleLogCos(Cartpole):
         self.R = np.diag(R).reshape((self.n_act, self.n_act))
 
         # Create the Reward Function:
-        self.q = SineQuadraticCost(self.Q, np.array([1.0, 0.0]), cuda=cuda)
+        self.q = SineQuadraticCost(
+            self.Q, np.array([1.0, 1.0, 0.0, 0.0]), cuda=cuda)
 
         # Determine beta s.t. the curvature at u = 0 is identical to 2R
         beta = (4. * self.u_lim[0] ** 2 / np.pi * self.R)[0, 0].item()

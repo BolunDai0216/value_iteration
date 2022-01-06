@@ -9,12 +9,12 @@ try:
 except ImportError as e:
     pass
 
-
 from value_iteration.value_function import QuadraticNetwork, TrigonometricQuadraticNetwork
 from value_iteration.run_experiment import run_experiment
-from value_iteration.pendulum import PendulumLogCos
+from value_iteration.cartpole import CartpoleLogCos
 
-if __name__ == "__main__":
+
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-alg", dest='algorithm', type=str,
                         default="rFVI", required=False, help="Specify the Algorithm.")
@@ -47,17 +47,17 @@ if __name__ == "__main__":
     # Define Hyper-parameters:
     hyper = {
         # Learning Mode:
-        'mode': 'RTDP',
+        'mode': 'DP',
         'robust': True if args.algorithm.lower() == 'rfvi' else False,
 
         # Value Function:
         'val_class': TrigonometricQuadraticNetwork,
         'checkpoint': model_path,
-        'plot': True,
+        'plot': None,
 
         # System Specification:
-        'system_class': PendulumLogCos,
-        'state_cost': '1.e+0, 1.0e-1',
+        'system_class': CartpoleLogCos,
+        'state_cost': '1.e+0, 1.e+0, 1.0e-1, 1.0e-1',
         'action_cost': '5.e-1',
         'eps': 6.5e-1,  # eps = 1 => \gamma = 1
         'dt': 1. / 125.,
@@ -107,3 +107,7 @@ if __name__ == "__main__":
 
     # Run Experiment:
     run_experiment(hyper)
+
+
+if __name__ == "__main__":
+    main()
