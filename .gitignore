@@ -111,3 +111,7 @@ model_snapshots/
 *.pkl
 *.mp4
 videos/
+
+# Saved Models
+data/
+
