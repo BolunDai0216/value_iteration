@@ -56,6 +56,15 @@ class QuadraticCost:
 
 class FeatureQuadraticCost:
     def __init__(self, Q, feature=None, cuda=False):
+        """
+              Q: positive definite state cost matrix
+        feature: a mask vector denoting whether an element of the state
+                 should be given a feature transformation, 1.0 means a
+                 feature transformation will be given and zero otherwise
+                 [0.0, 1.0] means a feature transformation will only be
+                 done to the second element.
+           cuda: boolean value for whether utilizing cuda
+        """
         feature = feature if feature is not None else np.zeros(Q.shape[-1])
         feature = np.clip(feature, 0., 1.0)
 

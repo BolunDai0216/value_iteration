@@ -35,10 +35,10 @@ class Cartpole(BaseSystem):
 
         # State Constraints:
         self.x_target = torch.tensor([0.0, 0.0, 0.0, 0.0])
-        self.x_start = torch.tensor([0.0, np.pi, 0.01, 0.01])
+        self.x_start = torch.tensor([0.01, np.pi, 0.01, 0.01])
         self.x_start_var = torch.tensor([1.e-3, 1.e-3, 1.e-6, 1.e-6])
         self.x_lim = torch.tensor([8., np.pi, 8., 8.])
-        self.x_init = torch.tensor([0.0, np.pi, 0.01, 0.01])
+        self.x_init = torch.tensor([0.01, np.pi, 0.01, 0.01])
         self.u_lim = torch.tensor([200., ])
 
         # Define Dynamics:
@@ -372,7 +372,7 @@ class CartpoleLogCos(Cartpole):
 
         # Create the Reward Function:
         self.q = SineQuadraticCost(
-            self.Q, np.array([1.0, 1.0, 0.0, 0.0]), cuda=cuda)
+            self.Q, np.array([0.0, 1.0, 0.0, 0.0]), cuda=cuda)
 
         # Determine beta s.t. the curvature at u = 0 is identical to 2R
         beta = (4. * self.u_lim[0] ** 2 / np.pi * self.R)[0, 0].item()
