@@ -42,7 +42,7 @@ class Cartpole(BaseSystem):
         self.u_lim = torch.tensor([20., ])
 
         # Define Dynamics:
-        self.gravity = -9.81
+        self.gravity = 9.81
 
         # theta = [cart mass, pole mass, pole length]
         self.theta_min = torch.tensor([0.99, 0.09, 0.49]).to(
@@ -95,10 +95,10 @@ class Cartpole(BaseSystem):
         dd_pos_a_denominator = M + m * s**2
         dd_pos_a = dd_pos_a_numerator / dd_pos_a_denominator
 
-        #      -(M+m)gsinθ - ml(dθ^2)sinθcosθ
+        #      (M+m)gsinθ - ml(dθ^2)sinθcosθ
         # a3 = ------------------------------
         #             l(M + m(sinθ)^2)
-        dd_ang_a_numerator = -(M + m) * self.gravity * \
+        dd_ang_a_numerator = (M + m) * self.gravity * \
             s - m * l * (x[:, 3]**2) * s * c
         dd_ang_a_denominator = l * (M + m * (s**2))
         dd_ang_a = dd_ang_a_numerator / dd_ang_a_denominator
@@ -128,8 +128,6 @@ class Cartpole(BaseSystem):
 
         if gradient:
             zeros, ones = torch.zeros_like(x[:, 1]), torch.ones_like(x[:, 1])
-            # mg(sinθ^2-cosθ^2)+ml(dθ)^2cosθ
-            # 2mcosθsinθ(mlsinθ(dθ)^2-mgcosθsinθ)
 
             #          ∂a2     mg(sinθ^2-cosθ^2)+ml(dθ)^2cosθ   2mcosθsinθ(mlsinθ(dθ)^2-mgcosθsinθ)
             # da2dt = ------ = ------------------------------ - ----------------------------------
@@ -149,25 +147,25 @@ class Cartpole(BaseSystem):
             da2ddt_denominator = da2dt_denominator1
             da2ddt = (2 * m * l * x[:, 3] * s) / da2ddt_denominator
 
-            #          ∂a3     (2msinθcosθ)[mlsinθcosθ(dθ)^2+(M+m)gsinθ]   ml(dθ)^2(cosθ)^2 - ml(dθ)^2(sinθ)^2 + (M+m)gcosθ
-            # da3dt = ------ = ---------------------------------------- - ------------------------------------------------
-            #           ∂θ                l(M + m(sinθ)^2)^2                              l(M + m(sinθ)^2)
+            #          ∂a3       (2msinθcosθ)[(M+m)gsinθ-mlsinθcosθ(dθ)^2]   ml(dθ)^2(sinθ)^2 - ml(dθ)^2(cosθ)^2 + (M+m)gcosθ
+            # da3dt = ------ = - ---------------------------------------- + ------------------------------------------------
+            #           ∂θ                  l(M + m(sinθ)^2)^2                              l(M + m(sinθ)^2)
             da3dt_numerator1 = (2*m*s*c) * \
-                (m*l*s*c*(x[:, 3]**2)+(M+m)*self.gravity*s)
+                ((M+m)*self.gravity*s-m*l*s*c*(x[:, 3]**2))
             da3dt_numerator2 = m*l*(x[:, 3]**2) * \
-                (c**2 - s**2) + (M+m)*self.gravity*c
+                (s**2-c**2) + (M+m)*self.gravity*c
 
             da3dt_denominator1 = l * (M + m * (s**2))**2
             da3dt_denominator2 = dd_ang_a_denominator
 
-            da3dt = (da3dt_numerator1 / da3dt_denominator1) - \
-                (da3dt_numerator2 / da3dt_denominator2)
+            da3dt = (da3dt_numerator2 / da3dt_denominator2) - \
+                (da3dt_numerator1 / da3dt_denominator1)
 
-            #            ∂a3      -2ml(dθ)sinθcosθ
+            #            ∂a3      -2m(dθ)sinθcosθ
             # da3ddt = -------- = ----------------
-            #            ∂(dθ)    l(M + m(sinθ)^2)
-            da3ddt_numerator = -2 * m * l * x[:, 3] * s * c
-            da3ddt_denominator = dd_ang_a_denominator
+            #            ∂(dθ)    (M + m(sinθ)^2)
+            da3ddt_numerator = -2 * m * x[:, 3] * s * c
+            da3ddt_denominator = M + m * (s**2)
 
             da3ddt = da3ddt_numerator / da3ddt_denominator
 
@@ -252,24 +250,24 @@ class Cartpole(BaseSystem):
         da2dl_denominator = m*(s**2)+M
         da2dl = da2dl_numerator / da2dl_denominator
 
-        #           ∂a3    mcosθsinθ[l(dθ)^2+gcosθ]
+        #           ∂a3    mcosθsinθ[l(dθ)^2-gcosθ]
         # da3dM =  ----- = -----------------------
         #           ∂M        l[m(sinθ)^2+M]^2
-        da3dM_numerator = m*c*s*(l*(x[:, 3]**2) + self.gravity*c)
+        da3dM_numerator = m*c*s*(l*(x[:, 3]**2) - self.gravity*c)
         da3dM_denominator = l*(m*(s**2)+M)**2
         da3dM = da3dM_numerator / da3dM_denominator
 
-        #           ∂a3    -Mcosθsinθ[l(dθ)^2+gcosθ]
+        #           ∂a3    -Mcosθsinθ[l(dθ)^2-gcosθ]
         # da3dm =  ----- = -------------------------
         #           ∂m         l[m(sinθ)^2+M]^2
-        da3dm_numerator = -M*c*s*(l*(x[:, 3]**2) + self.gravity*c)
+        da3dm_numerator = -M*c*s*(l*(x[:, 3]**2) - self.gravity*c)
         da3dm_denominator = l*(m*(s**2)+M)**2
         da3dm = da3dm_numerator / da3dm_denominator
 
-        #           ∂a3      (M+m)gsinθ
+        #           ∂a3      -(M+m)gsinθ
         # da3dl =  ----- = ----------------
         #           ∂l     l^2[m(sinθ)^2+M]
-        da3dl_numerator = (M+m)*self.gravity*s
+        da3dl_numerator = -(M+m)*self.gravity*s
         da3dl_denominator = (l**2)*(m*(s**2)+M)
         da3dl = da3dl_numerator / da3dl_denominator
 
