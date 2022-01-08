@@ -57,6 +57,8 @@ def run_experiment(hyper):
     R = np.array([float(x) for x in hyper['action_cost'].split(',')])
     system = hyper['system_class'](Q, R, cuda=cuda, **hyper)
 
+    # ------------ Understood all above (01/06/2022) ------------
+
     # Compute Gamma s.t., the weight of the reward at time T is \eps, i.e., exp(-rho T) = gamma^(T/\Delta t) = eps:
     rho = -np.log(hyper['eps']) / hyper["T"]
     hyper["gamma"] = np.exp(-rho * hyper["dt"])

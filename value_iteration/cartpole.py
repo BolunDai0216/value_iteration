@@ -39,17 +39,17 @@ class Cartpole(BaseSystem):
         self.x_start_var = torch.tensor([1.e-3, 1.e-3, 1.e-6, 1.e-6])
         self.x_lim = torch.tensor([8., np.pi, 8., 8.])
         self.x_init = torch.tensor([0.01, np.pi, 0.01, 0.01])
-        self.u_lim = torch.tensor([200., ])
+        self.u_lim = torch.tensor([20., ])
 
         # Define Dynamics:
         self.gravity = -9.81
 
         # theta = [cart mass, pole mass, pole length]
-        self.theta_min = torch.tensor([0.5, 0.05, 0.25]).to(
+        self.theta_min = torch.tensor([0.99, 0.09, 0.49]).to(
             device).view(1, self.n_parameter, 1)
         self.theta = torch.tensor([1., 0.1, 0.5]).to(
             device).view(1, self.n_parameter, 1)
-        self.theta_max = torch.tensor([2., 0.15, 0.75]).to(
+        self.theta_max = torch.tensor([1.01, 0.11, 0.51]).to(
             device).view(1, self.n_parameter, 1)
 
         # Test dynamics:
@@ -87,30 +87,31 @@ class Cartpole(BaseSystem):
         m = theta[:, 1]
         l = theta[:, 2]
 
-        # mglsinθcosθ + mldθsinθ
-        # ----------------------
-        #     M+m-ml(cosθ)^2
-        dd_pos_a_numerator = m * self.gravity * l * s * c + m * l * x[:, 3] * s
-        dd_pos_a_denominator = M + m - m * l * c**2
+        #      -mgsinθcosθ + ml(dθ)^2sinθ
+        # a2 = --------------------------
+        #             M+m(sinθ)^2
+        dd_pos_a_numerator = -m * self.gravity * \
+            s * c + m * l * (x[:, 3]**2) * s
+        dd_pos_a_denominator = M + m * s**2
         dd_pos_a = dd_pos_a_numerator / dd_pos_a_denominator
 
-        # -(M+m)gsinθ - ml(dθ^2)sinθcosθ
-        # ------------------------------
-        #        l(M + m(sinθ)^2)
+        #      -(M+m)gsinθ - ml(dθ^2)sinθcosθ
+        # a3 = ------------------------------
+        #             l(M + m(sinθ)^2)
         dd_ang_a_numerator = -(M + m) * self.gravity * \
             s - m * l * (x[:, 3]**2) * s * c
         dd_ang_a_denominator = l * (M + m * (s**2))
         dd_ang_a = dd_ang_a_numerator / dd_ang_a_denominator
 
-        #            1
-        # ----------------------
-        #     M+m-ml(cosθ)^2
+        #           1
+        # B2 = -----------
+        #      M+m(sinθ)^2
         dd_pos_B_denominator = dd_pos_a_denominator
         dd_pos_B = 1.0 / dd_pos_B_denominator
 
-        #              -cosθ
-        # ------------------------------
-        #        l(M + m(sinθ)^2)
+        #           -cosθ
+        # B3 = ----------------
+        #      l(M + m(sinθ)^2)
         dd_ang_B_denominator = dd_ang_a_denominator
         dd_ang_B = -c / dd_ang_B_denominator
 
@@ -127,14 +128,14 @@ class Cartpole(BaseSystem):
 
         if gradient:
             zeros, ones = torch.zeros_like(x[:, 1]), torch.ones_like(x[:, 1])
+            # mg(sinθ^2-cosθ^2)+ml(dθ)^2cosθ
+            # 2mcosθsinθ(mlsinθ(dθ)^2-mgcosθsinθ)
 
-            #          ∂a2     ml(dθcosθ-g+2g(cosθ)^2)  (ml)^2cosθsinθ(2dθsinθ+2gcosθsinθ)
-            # da2dt = ------ = ---------------------- - ---------------------------------
-            #           ∂θ         M+m-ml(cosθ)^2              (M+m-ml(cosθ)^2)^2
-            da2dt_numerator1 = m * l * \
-                (x[:, 3] * c - self.gravity + 2 * self.gravity * c**2)
-            da2dt_numerator2 = ((m * l)**2) * c * s * \
-                (2 * x[:, 3] * s + 2 * self.gravity * c * s)
+            #          ∂a2     mg(sinθ^2-cosθ^2)+ml(dθ)^2cosθ   2mcosθsinθ(mlsinθ(dθ)^2-mgcosθsinθ)
+            # da2dt = ------ = ------------------------------ - ----------------------------------
+            #           ∂θ             M+m(sinθ)^2                       (M+m(sinθ)^2)^2
+            da2dt_numerator1 = m*self.gravity*(s**2-c**2)+m*l*(x[:, 3]**2)*c
+            da2dt_numerator2 = 2*m*c*s*(m*l*s*(x[:, 3]**2)-m*self.gravity*c*s)
 
             da2dt_denominator1 = dd_pos_a_denominator
             da2dt_denominator2 = dd_pos_a_denominator**2
@@ -142,11 +143,11 @@ class Cartpole(BaseSystem):
             da2dt = (da2dt_numerator1 / da2dt_denominator1) - \
                 (da2dt_numerator2 / da2dt_denominator2)
 
-            #           ∂a2          mlsinθ
-            # da2ddt = ------- = --------------
-            #           ∂(dθ)    M+m-ml(cosθ)^2
+            #           ∂a2       2mldθsinθ
+            # da2ddt = ------- = -----------
+            #           ∂(dθ)    M+m(sinθ)^2
             da2ddt_denominator = da2dt_denominator1
-            da2ddt = (m * l * s) / da2ddt_denominator
+            da2ddt = (2 * m * l * x[:, 3] * s) / da2ddt_denominator
 
             #          ∂a3     (2msinθcosθ)[mlsinθcosθ(dθ)^2+(M+m)gsinθ]   ml(dθ)^2(cosθ)^2 - ml(dθ)^2(sinθ)^2 + (M+m)gcosθ
             # da3dt = ------ = ---------------------------------------- - ------------------------------------------------
@@ -170,10 +171,10 @@ class Cartpole(BaseSystem):
 
             da3ddt = da3ddt_numerator / da3ddt_denominator
 
-            #          ∂B2        -2mlsinθcosθ
-            # dB2dt = ------ = ------------------
-            #           ∂θ     (M+m-ml(cosθ)^2)^2
-            dB2dt_numerator = -2 * m * l * s * c
+            #          ∂B2       -2msinθcosθ
+            # dB2dt = ------ = ---------------
+            #           ∂θ     (M+m(sinθ)^2)^2
+            dB2dt_numerator = -2 * m * s * c
             dB2dt_denominator = da2dt_denominator1 ** 2
 
             dB2dt = dB2dt_numerator / dB2dt_denominator
@@ -229,25 +230,26 @@ class Cartpole(BaseSystem):
         dadth = torch.zeros(n_samples, self.n_parameter,
                             self.n_state).to(x.device)
 
-        #           ∂a2    -ml(2dθsinθ+2gcosθsinθ)
-        # da2dM =  ----- = -----------------------
-        #           ∂M       2[-ml(cosθ)^2+M+m]^2
-        da2dM_numerator = -m*l*(2*x[:, 3]*s + 2*self.gravity*c*s)
-        da2dM_denominator = 2 * (-m*l*(c**2)+M+m)**2
+        #           ∂a2    -m(2lsinθ(dθ)^2-gsin(2θ))
+        # da2dM =  ----- = -------------------------
+        #           ∂M         2[M+m(sinθ)^2]^2
+        da2dM_numerator = -m * \
+            (2*l*s*(x[:, 3]**2) - self.gravity*torch.sin(2*x[:, 1]))
+        da2dM_denominator = 2 * (m*(s**2)+M)**2
         da2dM = da2dM_numerator / da2dM_denominator
 
-        #           ∂a2        Mlsinθ(dθ+gcosθ)
-        # da2dm =  ----- = -----------------------
-        #           ∂m       [-ml(cosθ)^2+M+m]^2
-        da2dm_numerator = M*l*s*(x[:, 3] + self.gravity*c)
+        #           ∂a2    Msinθ(l(dθ)^2-gcosθ)
+        # da2dm =  ----- = --------------------
+        #           ∂m       [M+m(sinθ)^2]^2
+        da2dm_numerator = M*s*(l*x[:, 3]**2 - self.gravity*c)
         da2dm_denominator = da2dM_denominator / 2
         da2dm = da2dm_numerator / da2dm_denominator
 
-        #           ∂a2     msinθ(M+m)(dθ+g*cosθ)
-        # da2dl =  ----- = -----------------------
-        #           ∂l       [-ml(cosθ)^2+M+m]^2
-        da2dl_numerator = m*s*(M+m)*(x[:, 3] + self.gravity*c)
-        da2dl_denominator = da2dm_denominator
+        #           ∂a2     msinθ(dθ)^2
+        # da2dl =  ----- = -------------
+        #           ∂l      M+m(sinθ)^2
+        da2dl_numerator = m*s*(x[:, 3]**2)
+        da2dl_denominator = m*(s**2)+M
         da2dl = da2dl_numerator / da2dl_denominator
 
         #           ∂a3    mcosθsinθ[l(dθ)^2+gcosθ]
@@ -281,25 +283,18 @@ class Cartpole(BaseSystem):
         dBdth = torch.zeros(n_samples, self.n_parameter,
                             self.n_state, self.n_act).to(x.device)
 
-        #           ∂B2            -1
-        # dB2dM =  ----- = -------------------
-        #           ∂M     [-ml(cosθ)^2+M+m]^2
-        dB2dM_denominator = (M+m-m*l*(c**2))**2
+        #           ∂B2          -1
+        # dB2dM =  ----- = ---------------
+        #           ∂M     [M+m(sinθ)^2]^2
+        dB2dM_denominator = (M+m*(s**2))**2
         dB2dM = -1 / dB2dM_denominator
 
-        #           ∂B2       l(cosθ)^2-1
-        # dB2dm =  ----- = -------------------
-        #           ∂m     [-ml(cosθ)^2+M+m]^2
-        dB2dm_numerator = l * (c**2) - 1
+        #           ∂B2       -(sinθ)^2
+        # dB2dm =  ----- = ---------------
+        #           ∂m     [M+m(sinθ)^2]^2
+        dB2dm_numerator = -s**2
         dB2dm_denominator = dB2dM_denominator
         dB2dm = dB2dm_numerator / dB2dm_denominator
-
-        #           ∂B2         m(cosθ)^2
-        # dB2dl =  ----- = -------------------
-        #           ∂l     [-ml(cosθ)^2+M+m]^2
-        dB2dl_numerator = m * (c**2)
-        dB2dl_denominator = dB2dM_denominator
-        dB2dl = dB2dl_numerator / dB2dl_denominator
 
         #           ∂B3         cosθ
         # dB3dM =  ----- = ----------------
@@ -322,7 +317,6 @@ class Cartpole(BaseSystem):
 
         dBdth[:, 0, 2] = dB2dM
         dBdth[:, 1, 2] = dB2dm
-        dBdth[:, 2, 2] = dB2dl
         dBdth[:, 0, 3] = dB3dM
         dBdth[:, 1, 3] = dB3dm
         dBdth[:, 2, 3] = dB3dl

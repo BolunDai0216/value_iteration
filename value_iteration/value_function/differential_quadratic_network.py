@@ -1,5 +1,8 @@
+from pdb import set_trace
+
 from deep_differential_network.activations import *
-from deep_differential_network.differential_hessian_network_ensemble import DifferentialNetwork
+from deep_differential_network.differential_hessian_network_ensemble import \
+    DifferentialNetwork
 
 
 class QuadraticNetwork(DifferentialNetwork):
@@ -16,7 +19,8 @@ class QuadraticNetwork(DifferentialNetwork):
         # Calculate the indices of the diagonal elements of L:
         self.diag_idx = np.arange(n_input) + 1
         self.diag_idx = self.diag_idx * (self.diag_idx + 1) / 2 - 1
-        self.tri_idx = np.extract([x not in self.diag_idx for x in np.arange(self.m)], np.arange(self.m))
+        self.tri_idx = np.extract(
+            [x not in self.diag_idx for x in np.arange(self.m)], np.arange(self.m))
         self.tril_idx = np.tril_indices(self.n_input)
 
         self.s = nn.Softplus(beta=1)
@@ -25,8 +29,10 @@ class QuadraticNetwork(DifferentialNetwork):
 
         self.l = torch.zeros(self.n_network, 1, self.tril_idx[0].size, 1)
         self.L = torch.zeros(self.n_network, 1, self.n_input, self.n_input)
-        self.dldz = torch.zeros(self.n_network, 1, self.n_input,  self.tril_idx[0].size)
-        self.dLdz = torch.zeros(self.n_network, 1 * self.n_input, self.n_input, self.n_input)
+        self.dldz = torch.zeros(
+            self.n_network, 1, self.n_input,  self.tril_idx[0].size)
+        self.dLdz = torch.zeros(
+            self.n_network, 1 * self.n_input, self.n_input, self.n_input)
 
     def forward(self, x):
         z = x.view(-1, self.n_input, 1)
@@ -42,7 +48,8 @@ class QuadraticNetwork(DifferentialNetwork):
         l[:, :, self.diag_idx] = self.s(l_f[:, :, self.diag_idx]) + 1.e-3
 
         L = self.L.repeat(1, x.shape[0], 1, 1)
-        L[:, :, self.tril_idx[0], self.tril_idx[1]] = l[:].view(self.n_network, -1, self.m)
+        L[:, :, self.tril_idx[0], self.tril_idx[1]
+          ] = l[:].view(self.n_network, -1, self.m)
         LT = L.transpose(dim0=2, dim1=3)
 
         # Construct H:
@@ -55,18 +62,23 @@ class QuadraticNetwork(DifferentialNetwork):
         # Construct dL/dz
         dldz = self.dldz.repeat(1, x.shape[0], 1, 1)
         dldz[..., self.tri_idx] = dldz_f[..., self.tri_idx]
-        dldz[..., self.diag_idx] = self.dsdz(l_f[:, :, self.diag_idx]).transpose(dim0=2, dim1=3) * dldz_f[..., self.diag_idx]
+        dldz[..., self.diag_idx] = self.dsdz(l_f[:, :, self.diag_idx]).transpose(
+            dim0=2, dim1=3) * dldz_f[..., self.diag_idx]
 
         dLdz = self.dLdz.repeat(1, x.shape[0], 1, 1)
-        dLdz[:, :, self.tril_idx[0], self.tril_idx[1]] = dldz.reshape(self.n_network, -1, self.m)
-        dLdz = dLdz.view(self.n_network, -1, self.n_input, self.n_input, self.n_input)
+        dLdz[:, :, self.tril_idx[0], self.tril_idx[1]
+             ] = dldz.reshape(self.n_network, -1, self.m)
+        dLdz = dLdz.view(self.n_network, -1, self.n_input,
+                         self.n_input, self.n_input)
 
         # Construct dH/dz
-        dLdz_LT = torch.matmul(dLdz, LT.view(self.n_network, -1, 1, self.n_input, self.n_input))
+        dLdz_LT = torch.matmul(dLdz, LT.view(
+            self.n_network, -1, 1, self.n_input, self.n_input))
         dHdz = dLdz_LT + dLdz_LT.transpose(3, 4)
 
         # Construct dV/dx
-        dVdz = -2. * H_diff_z3 - torch.matmul(diff_z4.transpose(dim0=3, dim1=4), torch.matmul(dHdz, diff_z4)).view(self.n_network, -1, self.n_input, 1)
+        dVdz = -2. * H_diff_z3 - torch.matmul(diff_z4.transpose(dim0=3, dim1=4), torch.matmul(
+            dHdz, diff_z4)).view(self.n_network, -1, self.n_input, 1)
         dVdx = dVdz.transpose(dim0=2, dim1=3)
 
         return (V, dVdx)
@@ -96,7 +108,8 @@ class TrigonometricQuadraticNetwork(DifferentialNetwork):
     def __init__(self, n_input, feature=None, **kwargs):
 
         # set up the feature mask:
-        feature = feature if feature is not None else torch.cat([torch.ones(1), torch.zeros(n_input-1)], dim=0)
+        feature = feature if feature is not None else torch.cat(
+            [torch.ones(1), torch.zeros(n_input-1)], dim=0)
         feature = np.clip(feature, 0., 1.0)
         assert feature.size()[0] == n_input and torch.sum(feature) == 1.
         self.idx = feature.argmax()
@@ -107,12 +120,14 @@ class TrigonometricQuadraticNetwork(DifferentialNetwork):
 
         # Init the network:
         kwargs['n_output'] = self.m
-        super(TrigonometricQuadraticNetwork, self).__init__(self.n_feature + 1, **kwargs)
+        super(TrigonometricQuadraticNetwork, self).__init__(
+            self.n_feature + 1, **kwargs)
 
         # Calculate the indices of the diagonal elements of L:
         self.diag_idx = np.arange(n_input) + 1
         self.diag_idx = self.diag_idx * (self.diag_idx + 1) / 2 - 1
-        self.tri_idx = np.extract([x not in self.diag_idx for x in np.arange(self.m)], np.arange(self.m))
+        self.tri_idx = np.extract(
+            [x not in self.diag_idx for x in np.arange(self.m)], np.arange(self.m))
         self.tril_idx = np.tril_indices(self.n_input)
 
         # Feature Mappings:
@@ -130,8 +145,10 @@ class TrigonometricQuadraticNetwork(DifferentialNetwork):
 
         self.l = torch.zeros(self.n_network, 1, self.tril_idx[0].size, 1)
         self.L = torch.zeros(self.n_network, 1, self.n_input, self.n_input)
-        self.dldz = torch.zeros(self.n_network, 1, self.n_input,  self.tril_idx[0].size)
-        self.dLdz = torch.zeros(self.n_network, 1 * self.n_input, self.n_input, self.n_input)
+        self.dldz = torch.zeros(
+            self.n_network, 1, self.n_input,  self.tril_idx[0].size)
+        self.dLdz = torch.zeros(
+            self.n_network, 1 * self.n_input, self.n_input, self.n_input)
 
     def forward(self, x):
         x = x.view(-1, self.n_feature, 1)
@@ -150,7 +167,8 @@ class TrigonometricQuadraticNetwork(DifferentialNetwork):
         l[:, :, self.diag_idx] = self.s(l_f[:, :, self.diag_idx]) + 1.e-3
 
         L = self.L.repeat(1, x.shape[0], 1, 1)
-        L[:, :, self.tril_idx[0], self.tril_idx[1]] = l[:].view(self.n_network, -1, self.m)
+        L[:, :, self.tril_idx[0], self.tril_idx[1]
+          ] = l[:].view(self.n_network, -1, self.m)
         LT = L.transpose(dim0=2, dim1=3)
 
         # Construct H:
@@ -163,14 +181,18 @@ class TrigonometricQuadraticNetwork(DifferentialNetwork):
         # Construct dL/dz
         dldz = self.dldz.repeat(1, x.shape[0], 1, 1)
         dldz[..., self.tri_idx] = dldz_f[..., self.tri_idx]
-        dldz[..., self.diag_idx] = self.dsdz(l_f[:, :, self.diag_idx]).transpose(dim0=2, dim1=3) * dldz_f[..., self.diag_idx]
+        dldz[..., self.diag_idx] = self.dsdz(l_f[:, :, self.diag_idx]).transpose(
+            dim0=2, dim1=3) * dldz_f[..., self.diag_idx]
 
         dLdz = self.dLdz.repeat(1, x.shape[0], 1, 1)
-        dLdz[:, :, self.tril_idx[0], self.tril_idx[1]] = dldz.reshape(self.n_network, -1, self.m)
-        dLdz = dLdz.view(self.n_network, -1, self.n_input, self.n_input, self.n_input)
+        dLdz[:, :, self.tril_idx[0], self.tril_idx[1]
+             ] = dldz.reshape(self.n_network, -1, self.m)
+        dLdz = dLdz.view(self.n_network, -1, self.n_input,
+                         self.n_input, self.n_input)
 
         # Construct dH/dz
-        dLdz_LT = torch.matmul(dLdz, LT.view(self.n_network, -1, 1, self.n_input, self.n_input))
+        dLdz_LT = torch.matmul(dLdz, LT.view(
+            self.n_network, -1, 1, self.n_input, self.n_input))
         dHdz = dLdz_LT + dLdz_LT.transpose(3, 4)
 
         # Construct dV/dx
@@ -185,7 +207,8 @@ class TrigonometricQuadraticNetwork(DifferentialNetwork):
         sin_th = torch.sin(x[:, self.idx, 0])
         cos_th = torch.cos(x[:, self.idx, 0])
 
-        z = torch.cat((x[:, :self.idx], sin_th.view(-1, 1, 1), cos_th.view(-1, 1, 1), x[:, self.idx+1:]), dim=1)
+        z = torch.cat((x[:, :self.idx], sin_th.view(-1, 1, 1),
+                      cos_th.view(-1, 1, 1), x[:, self.idx+1:]), dim=1)
 
         dzdx = self.dzdx.repeat(x.shape[0], 1, 1)
         dzdx[:, self.idx, self.idx] = cos_th
