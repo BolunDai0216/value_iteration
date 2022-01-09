@@ -47,7 +47,7 @@ def main():
     # Define Hyper-parameters:
     hyper = {
         # Learning Mode:
-        'mode': 'DP',
+        'mode': 'RTDP',
         'robust': True if args.algorithm.lower() == 'rfvi' else False,
 
         # Value Function:
@@ -57,8 +57,8 @@ def main():
 
         # System Specification:
         'system_class': CartpoleLogCos,
-        'state_cost': '1.e+0, 1.e+0, 1.0e-1, 1.0e-1',
-        'action_cost': '5.e-1',
+        'state_cost': '2.5e+1, 1.e+0, 5.0e-1, 1.0e-1',
+        'action_cost': '1.e-1',
         'eps': 6.5e-1,  # eps = 1 => \gamma = 1
         'dt': 1. / 125.,
         'T': 5.,
@@ -88,7 +88,7 @@ def main():
 
         # Lambda Traces
         'trace_weight_n': 1.e-4,
-        'trace_lambda': 0.85,
+        'trace_lambda': 0.45,
 
         # Exploration:
         'x_noise': 1.e-6,
