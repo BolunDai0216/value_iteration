@@ -8,6 +8,7 @@ import torch
 
 from safe_value_iteration.envs.pendulum_env import PendulumEnv
 from safe_value_iteration.value_function_model import ValueFunctionModel
+from safe_value_iteration.l_return import ReplayBuffer
 
 
 class SVI_Train:
@@ -19,6 +20,8 @@ class SVI_Train:
             feature=self.env.feature_mask,
             **kwargs,
         )
+
+        self.buf = ReplayBuffer(**kwargs)
 
         self.hyper = kwargs
         self.safe = kwargs.get("safe", False)
@@ -46,8 +49,17 @@ class SVI_Train:
             )
             next_state, reward = self.env.step(action)
 
+            if iter == 0:
+                self.buf.add(state=state, reward=reward)
+            else:
+                self.buf.add(state=state, reward=reward, value=V)
+
             mean_reward += torch.mean(reward).item()
             state = next_state
+
+        # Get value function of terminal state
+        V, _ = self.model(state)
+        self.buf.add(value=V)
 
         mean_terminal_state = torch.mean(state, dim=0)
 
@@ -91,11 +103,16 @@ def main():
         'is_numpy': False,
         'cuda': True,
         'safe': False,
+        'T': 5.0,
+        'dt': 1.0 / 125.0,
+        'lam': 0.85,
+        'eps': 1e-4,
     }
     env = PendulumEnv(**hyper)
     alg = SVI_Train(env, **hyper)
 
     alg.rollout(**hyper)
+    alg.buf.calculate_l_return()
 
 
 if __name__ == "__main__":

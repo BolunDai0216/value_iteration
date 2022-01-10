@@ -50,6 +50,9 @@ class PendulumEnv(BaseEnv):
 
         F = self.F(self.state)
         G = self.G(self.state)
+
+        # TODO: add state noise and action noise
+
         next_state = self.state + (F + G @ action) * self.dt
 
         if self.wrap:
@@ -77,6 +80,10 @@ class PendulumEnv(BaseEnv):
         # Sample and reshape
         x0 = dist_x.sample((self.n_batch,))
         x0 = x0.view(-1, self.n_state, 1).to(self.device)
+
+        if self.wrap:
+            x0[:, self.wrap_i, :] = torch.remainder(
+                x0[:, self.wrap_i, :] + np.pi, 2 * np.pi) - np.pi
 
         if is_numpy:
             # Transform to numpy array
