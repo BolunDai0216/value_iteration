@@ -111,6 +111,7 @@ class TrigonometricQuadraticNetwork(DifferentialNetwork):
         feature = feature if feature is not None else torch.cat(
             [torch.ones(1), torch.zeros(n_input-1)], dim=0)
         feature = np.clip(feature, 0., 1.0)
+
         assert feature.size()[0] == n_input and torch.sum(feature) == 1.
         self.idx = feature.argmax()
         self.n_feature = n_input

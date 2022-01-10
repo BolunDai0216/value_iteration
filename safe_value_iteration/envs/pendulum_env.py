@@ -15,7 +15,7 @@ class PendulumEnv(BaseEnv):
         self.dt = kwargs.get("dt", 1./125.)
 
         # Define System Parameters
-        self.n_batch = 64
+        self.n_batch = kwargs.get("n_batch", 64)
         self.n_state = 2
         self.n_act = 1
         self.wrap = True  # if there exists an element of the state that is a joint angle
@@ -141,6 +141,7 @@ class PendulumEnv(BaseEnv):
 def main():
     env = PendulumEnv(cuda=True)
 
+    # Test Code using torch.Tensor
     x0_torch = env.reset()
     action_torch = torch.ones(env.n_batch, 1, 1).to(env.device)
     F_torch = env.F(x0_torch)
@@ -161,6 +162,7 @@ def main():
     assert next_state_torch.shape == (env.n_batch, env.n_state, 1)
     assert reward_torch.shape == (env.n_batch, 1, 1)
 
+    # Test Code using np.ndarray
     x0_np = env.reset(is_numpy=True)
     action_np = np.ones([env.n_batch, 1, 1])
     F_np = env.F(x0_np)

@@ -1,5 +1,5 @@
 import torch
-from torch.optim import Adam, SGD
+from torch.optim import SGD, Adam
 
 
 class ValueFunctionMixture:
@@ -39,7 +39,8 @@ class ValueFunctionMixture:
 
             new_state_dict = {}
             for key in state_dict[0].keys():
-                stacked_parameters = torch.stack([dict_i[key] for dict_i in state_dict], dim=0)
+                stacked_parameters = torch.stack(
+                    [dict_i[key] for dict_i in state_dict], dim=0)
                 new_state_dict[key] = stacked_parameters
 
             self.net.load_state_dict(new_state_dict)
@@ -47,7 +48,8 @@ class ValueFunctionMixture:
 
 class AdamOptimizerMixture:
     def __init__(self, value_fun, lr=1.e-3, weight_decay=0.0, amsgrad=True):
-        self.opt = [Adam(net_i.parameters(), lr=lr, weight_decay=weight_decay, amsgrad=amsgrad) for net_i in value_fun.net]
+        self.opt = [Adam(net_i.parameters(), lr=lr, weight_decay=weight_decay,
+                         amsgrad=amsgrad) for net_i in value_fun.net]
 
     def zero_grad(self):
         _ = [opt_i.zero_grad() for opt_i in self.opt]
