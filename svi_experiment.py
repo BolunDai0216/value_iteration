@@ -16,9 +16,7 @@ class SVI_Train:
         self.env = env
 
         self.model = ValueFunctionModel(
-            self.env.n_state,
-            feature=self.env.feature_mask,
-            **kwargs,
+            self.env.n_state, feature=self.env.feature_mask, **kwargs,
         )
 
         self.buf = ReplayBuffer(**kwargs)
@@ -86,6 +84,8 @@ class SVI_Train:
 
 
 def main():
+    torch.cuda.set_device(0)
+
     hyper = {
         # Network
         'n_network': 4,
@@ -99,7 +99,7 @@ def main():
 
         # Experiment
         'init_type': 'uniform',
-        'n_batch': 2,
+        'n_batch': 16,
         'is_numpy': False,
         'cuda': True,
         'safe': False,

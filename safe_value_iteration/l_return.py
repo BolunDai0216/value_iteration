@@ -13,12 +13,42 @@ class LReturn:
         self.gam = np.exp(-rho * kwargs.get('dt', 1.0/125.0))
         self.N = np.ceil(np.log(eps / (1. - self.lam)) /
                          np.log(self.lam)).astype(int)
+        self.n_l_returns = int(kwargs.get('T', 5.0) /
+                               kwargs.get('dt', 1.0/125.0))
 
-    def get_return(self):
-        return 0
+        """
+        A self.N = 3 example would be:
+                     ｜1  1  1  ｜
+        return_mat = ｜0  g  g  ｜
+                     ｜0  0  g^2｜
+        l_return_vec = [(1-λ), (1-λ)λ, λ^2]
+        """
+        return_mat = torch.zeros(self.N, self.N)
+        l_return_vec = torch.zeros(self.N, 1)
+        for i in range(self.N):
+            return_mat[i, i:] = self.gam**i
+            l_return_vec[i] = self.lam**i * (1 - self.lam)
+        l_return_vec[-1] = self.lam**(self.N-1)
 
-    def get_l_return(self):
-        return 0
+        if kwargs.get('cuda', False):
+            self.return_mat = return_mat.cuda()
+            self.l_return_vec = l_return_vec.cuda()
+        else:
+            self.return_mat = return_mat
+            self.l_return_vec = l_return_vec
+
+    def get_returns(self, rewards, values):
+        l_returns = []
+        for i in range(self.n_l_returns):
+            horizon = np.min([self.N, self.n_l_returns-i])
+            i_returns = rewards[:, 0, i:i+horizon] @ \
+                self.return_mat[:horizon, :horizon]
+            i_returns += values[:, 0, i:i+horizon]
+            i_l_returns = i_returns @ self.l_return_vec[:horizon, :]
+            l_returns.append(i_l_returns)
+        l_returns = torch.cat(l_returns, dim=1).view(-1, self.n_l_returns, 1)
+
+        return l_returns
 
 
 class ReplayBuffer:
@@ -50,11 +80,21 @@ class ReplayBuffer:
         ----------------------------------------------------
         where N = T / dt
         """
-        set_trace()
-        return 0
+        rewards = torch.cat(self.reward_buf, dim=2)
+        values = torch.cat(self.value_buf, dim=2)
+
+        # get returns
+        self.l_returns = self.l_return.get_returns(rewards, values)
 
     def sample(self):
-        return 0
+        states = torch.cat(self.state_buf, dim=2)
+
+        # reset all buffers
+        self.state_buf = []
+        self.reward_buf = []
+        self.value_buf = []
+
+        return states, self.l_returns
 
 
 def main():
