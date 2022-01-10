@@ -22,6 +22,8 @@ class PendulumEnv(BaseEnv):
         self.wrap_i = 0   # which element of the state is a joint angle
         self.m = 1.0      # pendulum mass
         self.l = 1.0      # pendulum length
+        self.feature_mask = torch.zeros(self.n_state)
+        self.feature_mask[self.wrap_i] = 1.0
 
         # Target & Initial State
         self.x_target = torch.tensor([0.0, 0.0])
@@ -50,13 +52,17 @@ class PendulumEnv(BaseEnv):
         G = self.G(self.state)
         next_state = self.state + (F + G @ action) * self.dt
 
+        if self.wrap:
+            next_state[:, self.wrap_i, :] = torch.remainder(
+                next_state[:, self.wrap_i, :] + np.pi, 2 * np.pi) - np.pi
+
         reward = self.reward(next_state, action)
 
         self.state = next_state
 
         return next_state, reward
 
-    def reset(self, type="uniform", batch_size=64, is_numpy=False):
+    def reset(self, type="uniform", is_numpy=False):
         if type == "uniform":
             # Sample uniformly from a given range of the state space
             dist_x = torch.distributions.uniform.Uniform(

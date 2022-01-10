@@ -1,34 +1,101 @@
 import json
+from pdb import set_trace
 
 import munch
+import numpy as np
 import tensorflow as tf
+import torch
 
 from safe_value_iteration.envs.pendulum_env import PendulumEnv
+from safe_value_iteration.value_function_model import ValueFunctionModel
 
 
 class SVI_Train:
-    def __init__(self, env):
+    def __init__(self, env, **kwargs):
         self.env = env
 
-    def train(self):
+        self.model = ValueFunctionModel(
+            self.env.n_state,
+            feature=self.env.feature_mask,
+            **kwargs,
+        )
+
+        self.hyper = kwargs
+        self.safe = kwargs.get("safe", False)
+
+    def train(self, **kwargs):
         pass
 
-    def evaluate(self):
+    def evaluate(self, **kwargs):
+        reward, terminal_state = self.rollout(**kwargs)
+
+        return reward, terminal_state
+
+    def rollout(self, **kwargs):
+        state = self.env.reset(
+            type=kwargs.get("init_type", "uniform"),
+            is_numpy=kwargs.get("is_numpy", False),
+        )
+
+        n_iters = int(self.env.T / self.env.dt)
+        mean_reward = 0.0
+
+        for iter in range(n_iters):
+            V, dVdx, action = self.get_action(
+                state, safe=self.safe
+            )
+            next_state, reward = self.env.step(action)
+
+            mean_reward += torch.mean(reward).item()
+            state = next_state
+
+        mean_terminal_state = torch.mean(state, dim=0)
+
+        return mean_reward, mean_terminal_state
+
+    def update(self, **kwargs):
         pass
 
-    def rollout(self):
-        pass
+    def get_action(self, state, safe=False):
+        # Get V and dVdx
+        V, dVdx = self.model(state)
+        dVdx = dVdx.transpose(dim0=1, dim1=2)
+        # Get G
+        G = self.env.G(state)
+        GT = G.transpose(dim0=1, dim1=2)
+        # Get Action
+        GT_dVdx = torch.matmul(GT, dVdx)
+        action = self.env.r.grad_convex_conjugate(GT_dVdx)
 
-    def update(self):
-        pass
+        if safe:
+            print("----- Not yet implemented -----")
 
-    def get_action(self, safe=False):
-        pass
+        return V, dVdx, action
 
 
 def main():
-    env = PendulumEnv(cuda=True)
-    alg = SVI_Train(env)
+    hyper = {
+        # Network
+        'n_network': 4,
+        'activation': 'Tanh',
+        'n_width': 96,
+        'n_depth': 3,
+        'n_output': 1,
+        'g_hidden': 1.41,
+        'g_output': 1.,
+        'b_output': -0.1,
+
+        # Experiment
+        'init_type': 'uniform',
+        'n_batch': 2,
+        'is_numpy': False,
+        'cuda': True,
+        'safe': False,
+    }
+    env = PendulumEnv(**hyper)
+    alg = SVI_Train(env, **hyper)
+
+    alg.rollout(**hyper)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from value_iteration.value_function import TrigonometricQuadraticNetwork
 
 
 class ValueFunctionModel:
-    def __init__(self, n_state, feature=None, **kwargs):
+    def __init__(self, n_state, feature=None, cuda=True, **kwargs):
         """
         **kwargs contains:
            feature: a torch.Tensor of 1 and 0 denoting which element of the state is joint angle
@@ -26,6 +26,7 @@ class ValueFunctionModel:
             n_state, feature=feature, **kwargs)
         self.name = self.net.name + f"_mixture{self.net.n_network:02d}"
         self.device = self.net.device
+        ValueFunctionModel.cuda(self) if cuda else ValueFunctionModel.cpu(self)
 
     def __call__(self, state):
         return self.forward(state)
