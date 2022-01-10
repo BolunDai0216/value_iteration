@@ -1,7 +1,9 @@
+from pdb import set_trace
+
 import numpy as np
 import torch
 from safe_value_iteration.envs.base_env import BaseEnv
-from pdb import set_trace
+from value_iteration.cost_functions import ArcTangent, SineQuadraticCost
 
 
 class PendulumEnv(BaseEnv):
@@ -30,6 +32,13 @@ class PendulumEnv(BaseEnv):
 
         # Control Limits
         self.u_lim = torch.tensor([200., ])
+
+        # Rewards
+        self.Q = np.diag([1.0, 0.1]).reshape((self.n_state, self.n_state))
+        self.R = np.diag([0.5]).reshape((self.n_act, self.n_act))
+        self.q = SineQuadraticCost(self.Q, np.array([1.0, 0.0]), cuda=cuda)
+        beta = (4. * self.u_lim[0] ** 2 / np.pi * self.R)[0, 0].item()
+        self.r = ArcTangent(alpha=self.u_lim.numpy()[0], beta=beta)
 
         PendulumEnv.cuda(self) if cuda else PendulumEnv.cpu(self)
 
@@ -113,7 +122,10 @@ class PendulumEnv(BaseEnv):
     def reward(self, state, action):
         is_numpy = True if isinstance(state, np.ndarray) else False
         assert is_numpy == self.is_numpy
-        return 0
+
+        reward = -(self.q(state) + self.r(action)) * self.dt
+
+        return reward
 
     def cuda(self, device=None):
         self.u_lim = self.u_lim.cuda(device=device)
@@ -145,7 +157,9 @@ def main():
     next_state_torch, reward_torch = env.step(action_torch)
 
     assert isinstance(next_state_torch, torch.Tensor)
+    assert isinstance(reward_torch, torch.Tensor)
     assert next_state_torch.shape == (env.n_batch, env.n_state, 1)
+    assert reward_torch.shape == (env.n_batch, 1, 1)
 
     x0_np = env.reset(is_numpy=True)
     action_np = np.ones([env.n_batch, 1, 1])
@@ -163,7 +177,9 @@ def main():
     next_state_np, reward_np = env.step(action_np)
 
     assert isinstance(next_state_np, np.ndarray)
+    assert isinstance(reward_np, np.ndarray)
     assert next_state_np.shape == (env.n_batch, env.n_state, 1)
+    assert reward_np.shape == (env.n_batch, 1, 1)
 
 
 if __name__ == "__main__":
