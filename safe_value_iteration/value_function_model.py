@@ -28,12 +28,20 @@ class ValueFunctionModel:
         self.device = self.net.device
         ValueFunctionModel.cuda(self) if cuda else ValueFunctionModel.cpu(self)
 
-    def __call__(self, state):
-        return self.forward(state)
+    def __call__(self, state, fit=False):
+        return self.forward(state, fit=fit)
 
-    def forward(self, state):
+    def forward(self, state, fit=False):
+        """
+        If fit is True outputs the V and dVdx of each network
+        in the ensemble.
+
+        If fit is False outputs the mean of V and dVdx of the
+        ensemble of the values,
+        """
         V_ensemble, dVdx_ensemble = self.net(state)
-        V, dVdx = (V_ensemble.mean(dim=0), dVdx_ensemble.mean(dim=0))
+        V, dVdx = (V_ensemble, dVdx_ensemble) if fit else (
+            V_ensemble.mean(dim=0), dVdx_ensemble.mean(dim=0))
 
         return V, dVdx
 

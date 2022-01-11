@@ -90,8 +90,10 @@ class SVI_Train:
 
     def optimize(self, states, targets):
         self.optimizer.zero_grad()
-        est, _ = self.model(states)
-        loss = torch.mean(torch.abs(est.view(-1, 1) - targets), dim=0)
+        est, _ = self.model(states, fit=True)
+        loss = torch.mean(
+            torch.abs(est.squeeze(2) - targets.unsqueeze(0)), dim=0)
+        loss = torch.mean(loss)
         loss.backward()
         self.optimizer.step()
 
@@ -115,7 +117,7 @@ class SVI_Train:
 
 
 def main():
-    torch.cuda.set_device(0)
+    torch.cuda.set_device(1)
 
     hyper = {
         # Network
