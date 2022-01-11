@@ -84,17 +84,20 @@ class ReplayBuffer:
         values = torch.cat(self.value_buf, dim=2)
 
         # get returns
-        self.l_returns = self.l_return.get_returns(rewards, values)
+        l_returns = self.l_return.get_returns(rewards, values)
+
+        return l_returns
 
     def sample(self):
         states = torch.cat(self.state_buf, dim=2)
+        l_returns = self.calculate_l_return()
 
         # reset all buffers
         self.state_buf = []
         self.reward_buf = []
         self.value_buf = []
 
-        return states, self.l_returns
+        return states, l_returns
 
 
 def main():
