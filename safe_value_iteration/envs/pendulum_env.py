@@ -13,6 +13,7 @@ class PendulumEnv(BaseEnv):
         # Define Duration
         self.T = kwargs.get("T", 5.0)
         self.dt = kwargs.get("dt", 1./125.)
+        self.n_step = int(self.T / self.dt)
 
         # Define System Parameters
         self.n_batch = kwargs.get("n_batch", 64)
@@ -31,6 +32,9 @@ class PendulumEnv(BaseEnv):
         self.x_init_var = torch.tensor([1.e-3, 1.e-6])
         # sampling range of initial state
         self.x_init_lim = torch.tensor([np.pi, 8.])
+
+        # State Limits (not enforced in the env)
+        self.x_lim = torch.tensor([np.pi, 8.])
 
         # Control Limits
         self.u_lim = torch.tensor([200., ])
@@ -51,9 +55,9 @@ class PendulumEnv(BaseEnv):
         F = self.F(self.state)
         G = self.G(self.state)
 
-        # TODO: add state noise and action noise
-
-        next_state = self.state + (F + G @ action) * self.dt
+        next_state = self.state + \
+            (F + G @ (action + self.n_u[self.step_n])
+             ) * self.dt + self.n_x[self.step_n]
 
         if self.wrap:
             next_state[:, self.wrap_i, :] = torch.remainder(
@@ -62,6 +66,7 @@ class PendulumEnv(BaseEnv):
         reward = self.reward(next_state, action)
 
         self.state = next_state
+        self.step_n += 1
 
         return next_state, reward
 
@@ -95,6 +100,12 @@ class PendulumEnv(BaseEnv):
         # if True then all outputs are np.ndarray
         # if False then all outputs are torch.Tensor
         self.is_numpy = is_numpy
+
+        # Noise
+        self.get_noise()
+
+        # Step counter
+        self.step_n = 0
 
         return x0
 
@@ -139,6 +150,31 @@ class PendulumEnv(BaseEnv):
         reward = -(self.q(state) + self.r(action)) * self.dt
 
         return reward
+
+    def get_noise(self, x_noise=0.0, u_noise=0.0):
+        # State noise: Wiener Process
+        mu_x, eye_x = torch.zeros(self.n_state), torch.eye(self.n_state)
+        xi_x_alpha = x_noise * self.x_lim.view(1, 1, self.n_state, 1)
+        dist_x_noise = torch.distributions.multivariate_normal.MultivariateNormal(
+            mu_x, covariance_matrix=eye_x)
+        n_x = dist_x_noise.sample((self.n_step, self.n_batch)).float().to(
+            self.device).view(self.n_step, self.n_batch, self.n_state, 1)
+        self.n_x = xi_x_alpha.to(n_x.device) / 1.96 * np.sqrt(self.dt) * n_x
+
+        # Action noise: Ornstein–Uhlenbeck process
+        mu_u, eye_u = torch.zeros(self.n_act), torch.eye(self.n_act)
+        theta = 0.5
+        t = torch.arange(0.0, self.T, self.dt)
+        exp_minus = torch.exp(-theta * t).view(-1, 1, 1, 1).to(self.n_x.device)
+        exp_plus = torch.exp(theta * t).view(-1, 1, 1, 1).to(self.n_x.device)
+
+        xi_u_alpha = u_noise * self.u_lim
+        dist_u_noise = torch.distributions.multivariate_normal.MultivariateNormal(
+            mu_u, covariance_matrix=eye_u)
+        n_u = dist_u_noise.sample((self.n_step, self.n_batch)).float().to(
+            self.device).view(self.n_step, self.n_batch, self.n_act, 1)
+        self.n_u = xi_u_alpha.to(n_u.device) / 1.96 * exp_minus * \
+            torch.cumsum(exp_plus * np.sqrt(self.dt) * n_u, dim=0)
 
     def cuda(self, device=None):
         self.u_lim = self.u_lim.cuda(device=device)

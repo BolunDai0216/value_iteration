@@ -90,7 +90,13 @@ class ReplayBuffer:
 
     def sample(self):
         states = torch.cat(self.state_buf, dim=2)
+        states_dim = states.shape
+        states = states.view(states_dim[0], states_dim[-1], -1)
         l_returns = self.calculate_l_return()
+
+        n_states = states.shape[-1]
+        states = states.view(-1, n_states)
+        l_returns = l_returns.view(-1, 1)
 
         # reset all buffers
         self.state_buf = []

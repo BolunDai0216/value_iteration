@@ -54,8 +54,6 @@ def update_value_function(step_i, value_fun_tar, system, mem_train, hyper, write
             system.x_lim, np.ndarray) else system.x_lim
         x_lim = x_lim.to(value_fun_tar.device).view(1, system.n_state, 1)
 
-        # set_trace()
-
         for n_batch, batch_i in enumerate(mem_train):
             V0_tar, V0_diff, dV0dx_tar = [], [], []
 
@@ -224,6 +222,8 @@ def update_value_function(step_i, value_fun_tar, system, mem_train, hyper, write
                 torch.abs(V_hat - Vi_tar.unsqueeze(0)) ** hyper['exp'], dim=0)
 
             J_cost = torch.mean(err_V)
+
+            set_trace()
             J_cost.backward()
             optimizer.step()
 

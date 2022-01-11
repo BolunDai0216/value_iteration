@@ -103,16 +103,16 @@ def run_experiment(hyper):
     mem_data = [x, ax, dadx, Bx, dBdx]
 
     # Sample the testing data:
-    # grid = [linspace(-x_lim[i].item(), x_lim[i].item(), mat_shape[i])
-    #         for i in range(system.n_state)]
-    # x_grid = torch.meshgrid(grid, indexing='ij')
-    # x_grid = torch.cat([x.reshape(-1, 1) for x in x_grid],
-    #                    dim=1).view(-1, system.n_state, 1)
-    # x_grid = x_grid.cuda() if cuda else x_grid
+    grid = [linspace(-x_lim[i].item(), x_lim[i].item(), mat_shape[i])
+            for i in range(system.n_state)]
+    x_grid = torch.meshgrid(grid, indexing='ij')
+    x_grid = torch.cat([x.reshape(-1, 1) for x in x_grid],
+                       dim=1).view(-1, system.n_state, 1)
+    x_grid = x_grid.cuda() if cuda else x_grid
 
-    # ax_grid, Bx_grid, dadx_grid, dBdx_grid = system.dyn(x_grid, gradient=True)
-    # mem_grid_data = [x_grid.cpu(), ax_grid.cpu(), dadx_grid.cpu(),
-    #                  Bx_grid.cpu(), dBdx_grid.cpu()]
+    ax_grid, Bx_grid, dadx_grid, dBdx_grid = system.dyn(x_grid, gradient=True)
+    mem_grid_data = [x_grid.cpu(), ax_grid.cpu(), dadx_grid.cpu(),
+                     Bx_grid.cpu(), dBdx_grid.cpu()]
 
     # Memory Dimensions:
     mem_dim = ((system.n_state, 1),                                 # x
@@ -124,11 +124,11 @@ def run_experiment(hyper):
     # Generate Replay Memory:
     mem = PyTorchReplayMemory(mem_data[0].shape[0], min(
         mem_data[0].shape[0], int(hyper["eval_minibatch"]/2)), mem_dim, cuda)
-    # mem_test = PyTorchTestMemory(x_grid.shape[0], min(
-    #     mem_data[0].shape[0], hyper["n_minibatch"]), mem_dim, cuda)
+    mem_test = PyTorchTestMemory(x_grid.shape[0], min(
+        mem_data[0].shape[0], hyper["n_minibatch"]), mem_dim, cuda)
 
     mem.add_samples(mem_data)
-    # mem_test.add_samples(mem_grid_data)
+    mem_test.add_samples(mem_grid_data)
 
     print(f"{time.perf_counter() - t0_data:05.2e}s")
 

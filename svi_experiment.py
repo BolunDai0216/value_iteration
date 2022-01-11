@@ -5,10 +5,11 @@ import munch
 import numpy as np
 import tensorflow as tf
 import torch
+from torch.optim import Adam
 
 from safe_value_iteration.envs.pendulum_env import PendulumEnv
-from safe_value_iteration.value_function_model import ValueFunctionModel
 from safe_value_iteration.l_return import ReplayBuffer
+from safe_value_iteration.value_function_model import ValueFunctionModel
 
 
 class SVI_Train:
@@ -25,7 +26,17 @@ class SVI_Train:
         self.safe = kwargs.get("safe", False)
 
     def train(self, **kwargs):
-        pass
+        self.optimizer = Adam(self.model.net.parameters(),
+                              lr=kwargs.get("lr_SGD", 3e-5),
+                              weight_decay=kwargs.get("weight_decay", 1e-6),
+                              amsgrad=True)
+
+        for i in range(kwargs.get("n_epochs", 200)):
+            mean_reward, mean_terminal_state = self.rollout(**kwargs)
+            loss = self.update(**kwargs)
+
+            print(
+                f"Iteration {i}, mean_reward {mean_reward}, mean_terminal_state {mean_terminal_state} , loss {loss}")
 
     def evaluate(self, **kwargs):
         reward, terminal_state = self.rollout(**kwargs)
@@ -64,7 +75,27 @@ class SVI_Train:
         return mean_reward, mean_terminal_state
 
     def update(self, **kwargs):
-        pass
+        states, l_returns = self.buf.sample()
+
+        # set_trace()
+        # for j in range(5):
+        #     for i in range(20):
+        #         states_sample = states[i*125:(i+1)*125, :].detach()
+        #         l_returns_sample = l_returns[i*125:(i+1)*125, :].detach()
+
+        for i in range(40):
+            loss = self.optimize(states.detach(), l_returns.detach())
+
+        return loss.item()
+
+    def optimize(self, states, targets):
+        self.optimizer.zero_grad()
+        est, _ = self.model(states)
+        loss = torch.mean(torch.abs(est.view(-1, 1) - targets), dim=0)
+        loss.backward()
+        self.optimizer.step()
+
+        return loss
 
     def get_action(self, state, safe=False):
         # Get V and dVdx
@@ -99,7 +130,7 @@ def main():
 
         # Experiment
         'init_type': 'uniform',
-        'n_batch': 16,
+        'n_batch': 4,
         'is_numpy': False,
         'cuda': True,
         'safe': False,
@@ -107,12 +138,17 @@ def main():
         'dt': 1.0 / 125.0,
         'lam': 0.85,
         'eps': 1e-4,
+
+        # Network Optimization
+        'max_iterations': 20,
+        'lr_SGD': 1e-4,
+        'weight_decay': 1.e-6,
+        'exp': 1.,
+        'n_epochs': 1000,
     }
     env = PendulumEnv(**hyper)
     alg = SVI_Train(env, **hyper)
-
-    alg.rollout(**hyper)
-    alg.buf.calculate_l_return()
+    alg.train(**hyper)
 
 
 if __name__ == "__main__":
