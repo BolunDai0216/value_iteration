@@ -83,7 +83,7 @@ class SVI_Train:
         #         states_sample = states[i*125:(i+1)*125, :].detach()
         #         l_returns_sample = l_returns[i*125:(i+1)*125, :].detach()
 
-        for i in range(40):
+        for i in range(2):
             loss = self.optimize(states.detach(), l_returns.detach())
 
         return loss.item()
@@ -138,12 +138,12 @@ def main():
         'safe': False,
         'T': 5.0,
         'dt': 1.0 / 125.0,
-        'lam': 0.85,
+        'lam': 0.5,
         'eps': 1e-4,
 
         # Network Optimization
         'max_iterations': 20,
-        'lr_SGD': 1e-4,
+        'lr_SGD': 3e-5,
         'weight_decay': 1.e-6,
         'exp': 1.,
         'n_epochs': 1000,

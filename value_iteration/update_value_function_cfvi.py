@@ -68,42 +68,6 @@ def update_value_function(step_i, value_fun_tar, system, mem_train, hyper, write
             aj, dajdx, Bj, dBjdx = a0, da0dx, B0, dB0dx
             dVjdx, uj_star, dujdx_star = dV0dx, u0_star, du0dx_star
 
-            # Compute uniform scaling of adversarial noise:
-            noise_shape = (trace_n, xj.shape[0])
-            mu_x, mu_u = torch.zeros(system.n_state), torch.zeros(system.n_act)
-            eye_x, eye_u = torch.eye(system.n_state), torch.eye(system.n_act)
-
-            # the integration (i.e., cumsum) is implicit in the main loop!
-            dist_x_noise = torch.distributions.multivariate_normal.MultivariateNormal(
-                mu_x, covariance_matrix=eye_x)
-            x_noise = dist_x_noise.sample(noise_shape).to(xj.device)
-            x_noise = np.sqrt(hyper["dt"]) * \
-                hyper["xi_x_alpha"] / 1.96 * x_noise
-            xi_x_scale = torch.sqrt(
-                torch.sum(x_noise**2, dim=2)).view(trace_n, xj.shape[0], 1, 1)
-
-            dist_u_noise = torch.distributions.multivariate_normal.MultivariateNormal(
-                mu_u, covariance_matrix=eye_u)
-            u_noise = dist_u_noise.sample(noise_shape).to(xj.device)
-            u_noise = torch.cumsum(
-                np.sqrt(hyper["dt"]) * hyper["xi_u_alpha"] / 1.96 * u_noise, dim=0)
-            xi_u_scale = torch.sqrt(
-                torch.sum(u_noise**2, dim=2)).view(trace_n, xj.shape[0], 1, 1)
-
-            dist_o_noise = torch.distributions.multivariate_normal.MultivariateNormal(
-                mu_x, covariance_matrix=eye_x)
-            o_noise = dist_o_noise.sample(noise_shape).to(xj.device)
-            o_noise = torch.cumsum(
-                np.sqrt(hyper["dt"]) * hyper["xi_o_alpha"] / 1.96 * o_noise, dim=0)
-            xi_o_scale = torch.sqrt(
-                torch.sum(o_noise**2, dim=2)).view(trace_n, xj.shape[0], 1, 1)
-
-            min_theta, max_theta = - \
-                hyper["xi_m_alpha"] * \
-                system.theta, hyper["xi_m_alpha"] * system.theta
-            xi_M_range, xi_M_mu = (max_theta - min_theta) / \
-                2., (max_theta + min_theta)/2.
-
             r,  drdx = 0.0, 0.0
             for n in range(trace_n):
 
@@ -111,31 +75,10 @@ def update_value_function(step_i, value_fun_tar, system, mem_train, hyper, write
                 r_j = -hyper['dt'] * (system.q(xj) + system.r(uj_star))
                 r = r + hyper["gamma"] ** n * r_j
 
-                # Compute adversarial state-noise:
-                z_x = -dVjdx
-                xi_x = float(hyper["robust"]) * norm(z_x) * xi_x_scale[n]
-
-                # Compute adversarial action-noise:
-                z_u = -torch.matmul(Bj.transpose(dim0=1, dim1=2), dVjdx)
-                xi_u = float(hyper["robust"]) * norm(z_u) * xi_u_scale[n]
-
-                # Compute adversarial observation-noise:
-                z_o = - \
-                    torch.matmul(torch.matmul(
-                        dBjdx, uj_star.unsqueeze(-1)).squeeze(-1) + dajdx, dVjdx)
-                xi_o = float(hyper["robust"]) * norm(z_o) * xi_o_scale[n]
-
-                # Compute adversarial parameter-noise:
-                dajdp, dBjdp = system.grad_dyn_theta(xj)
-                z_m = -torch.matmul((torch.matmul(dBjdp, uj_star.unsqueeze(-1)
-                                                  ).squeeze(-1) + dajdp).squeeze(-1), dVjdx)
-                xi_m = float(hyper["robust"]) * \
-                    bounds(z_m, xi_M_mu, xi_M_range)
-
                 # Compute next state:
-                aj_xi, Bj_xi = system.dyn(xj + xi_o, dtheta=xi_m)
-                xdj = aj_xi + torch.matmul(Bj_xi, uj_star + xi_u)
-                xn = xj + hyper["dt"] * xdj + xi_x
+                aj_xi, Bj_xi = system.dyn(xj)
+                xdj = aj_xi + torch.matmul(Bj_xi, uj_star)
+                xn = xj + hyper["dt"] * xdj
 
                 # Compute wrap-around for continuous joints
                 if system.wrap:
@@ -222,6 +165,8 @@ def update_value_function(step_i, value_fun_tar, system, mem_train, hyper, write
                 torch.abs(V_hat - Vi_tar.unsqueeze(0)) ** hyper['exp'], dim=0)
 
             J_cost = torch.mean(err_V)
+
+            set_trace()
             J_cost.backward()
             optimizer.step()
 

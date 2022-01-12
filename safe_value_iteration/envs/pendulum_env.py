@@ -55,9 +55,10 @@ class PendulumEnv(BaseEnv):
         F = self.F(self.state)
         G = self.G(self.state)
 
-        next_state = self.state + \
-            (F + G @ (action + self.n_u[self.step_n])
-             ) * self.dt + self.n_x[self.step_n]
+        # next_state = self.state + \
+        #     (F + G @ (action + self.n_u[self.step_n])
+        #      ) * self.dt + self.n_x[self.step_n]
+        next_state = self.state + (F + G @ action) * self.dt
 
         if self.wrap:
             next_state[:, self.wrap_i, :] = torch.remainder(

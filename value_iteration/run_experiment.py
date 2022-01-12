@@ -103,16 +103,16 @@ def run_experiment(hyper):
     mem_data = [x, ax, dadx, Bx, dBdx]
 
     # Sample the testing data:
-    grid = [linspace(-x_lim[i].item(), x_lim[i].item(), mat_shape[i])
-            for i in range(system.n_state)]
-    x_grid = torch.meshgrid(grid, indexing='ij')
-    x_grid = torch.cat([x.reshape(-1, 1) for x in x_grid],
-                       dim=1).view(-1, system.n_state, 1)
-    x_grid = x_grid.cuda() if cuda else x_grid
+    # grid = [linspace(-x_lim[i].item(), x_lim[i].item(), mat_shape[i])
+    #         for i in range(system.n_state)]
+    # x_grid = torch.meshgrid(grid, indexing='ij')
+    # x_grid = torch.cat([x.reshape(-1, 1) for x in x_grid],
+    #                    dim=1).view(-1, system.n_state, 1)
+    # x_grid = x_grid.cuda() if cuda else x_grid
 
-    ax_grid, Bx_grid, dadx_grid, dBdx_grid = system.dyn(x_grid, gradient=True)
-    mem_grid_data = [x_grid.cpu(), ax_grid.cpu(), dadx_grid.cpu(),
-                     Bx_grid.cpu(), dBdx_grid.cpu()]
+    # ax_grid, Bx_grid, dadx_grid, dBdx_grid = system.dyn(x_grid, gradient=True)
+    # mem_grid_data = [x_grid.cpu(), ax_grid.cpu(), dadx_grid.cpu(),
+    #                  Bx_grid.cpu(), dBdx_grid.cpu()]
 
     # Memory Dimensions:
     mem_dim = ((system.n_state, 1),                                 # x
@@ -124,11 +124,11 @@ def run_experiment(hyper):
     # Generate Replay Memory:
     mem = PyTorchReplayMemory(mem_data[0].shape[0], min(
         mem_data[0].shape[0], int(hyper["eval_minibatch"]/2)), mem_dim, cuda)
-    mem_test = PyTorchTestMemory(x_grid.shape[0], min(
-        mem_data[0].shape[0], hyper["n_minibatch"]), mem_dim, cuda)
+    # mem_test = PyTorchTestMemory(x_grid.shape[0], min(
+    #     mem_data[0].shape[0], hyper["n_minibatch"]), mem_dim, cuda)
 
     mem.add_samples(mem_data)
-    mem_test.add_samples(mem_grid_data)
+    # mem_test.add_samples(mem_grid_data)
 
     print(f"{time.perf_counter() - t0_data:05.2e}s")
 
@@ -201,19 +201,19 @@ def run_experiment(hyper):
     n_test = 100
 
     # Compute the value-function error:
-    value_fun = value_fun.cuda() if cuda else value_fun.cpu()
-    x, u, V, dVdx, V0_tar, Vn_tar, V_diff = eval_memory(
-        value_fun, hyper, mem_test, system)
-    test_err_hjb = 1. / float(x_grid.shape[0]) * torch.sum(V_diff**2).numpy()
+    # value_fun = value_fun.cuda() if cuda else value_fun.cpu()
+    # x, u, V, dVdx, V0_tar, Vn_tar, V_diff = eval_memory(
+    #     value_fun, hyper, mem_test, system)
+    # test_err_hjb = 1. / float(x_grid.shape[0]) * torch.sum(V_diff**2).numpy()
 
     # Evaluate expected reward with uniform initial state distribution:
     test_config = {"verbose": False, 'mode': 'init',
                    'fs_return': 100., 'x_noise': 0.0, 'u_noise': 0.0}
-    _, uniform_trajectory_data = sample_data(
-        hyper["T"], n_test, value_fun, hyper, system, test_config)
-    R_uniform = uniform_trajectory_data[3].squeeze()
-    R_uniform_mean = torch.mean(R_uniform).item()
-    R_uniform_std = torch.std(R_uniform).item()
+    # _, uniform_trajectory_data = sample_data(
+    #     hyper["T"], n_test, value_fun, hyper, system, test_config)
+    # R_uniform = uniform_trajectory_data[3].squeeze()
+    # R_uniform_mean = torch.mean(R_uniform).item()
+    # R_uniform_std = torch.std(R_uniform).item()
 
     # Evaluate expected reward with downward initial state distribution:
     test_config = {"verbose": False, 'mode': 'test',
@@ -225,13 +225,13 @@ def run_experiment(hyper):
     R_downward_std = torch.std(R_downward).item()
 
     print("\nPerformance:")
-    print(f"        Value Function MSE = {test_err_hjb:.3e}")
-    print(
-        f" Expected Reward - Uniform = {R_uniform_mean:.2f} \u00B1 {1.96*R_uniform_std:.2f}")
+    # print(f"        Value Function MSE = {test_err_hjb:.3e}")
+    # print(
+    #     f" Expected Reward - Uniform = {R_uniform_mean:.2f} \u00B1 {1.96*R_uniform_std:.2f}")
     print(
         f"Expected Reward - Downward = {R_downward_mean:.2f} \u00B1 {1.96*R_downward_std:.2f}")
-    print(f"             Training Time = {t_train/60.:.2f}min")
-    print(f"                 Test Time = {time.perf_counter() - t0:.2f}s")
+    # print(f"             Training Time = {t_train/60.:.2f}min")
+    # print(f"                 Test Time = {time.perf_counter() - t0:.2f}s")
 
     print("\n################################################")
 

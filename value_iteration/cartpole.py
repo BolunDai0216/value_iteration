@@ -39,7 +39,7 @@ class Cartpole(BaseSystem):
         self.x_start_var = torch.tensor([1.e-3, 1.e-3, 1.e-6, 1.e-6])
         self.x_lim = torch.tensor([8., np.pi, 8., 8.])
         self.x_init = torch.tensor([0.01, np.pi, 0.01, 0.01])
-        self.u_lim = torch.tensor([20., ])
+        self.u_lim = torch.tensor([200., ])
 
         # Define Dynamics:
         self.gravity = 9.81

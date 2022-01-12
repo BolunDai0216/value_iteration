@@ -37,7 +37,7 @@ def main():
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.benchmark = True
 
-    model_path = None
+    model_path = "data/cFVI_step_150.torch"
     if args.algorithm.lower() == 'rfvi' and bool(args.load):
         model_path = 'data/rFVI.torch'
 
@@ -53,11 +53,11 @@ def main():
         # Value Function:
         'val_class': TrigonometricQuadraticNetwork,
         'checkpoint': model_path,
-        'plot': None,
+        'plot': True,
 
         # System Specification:
         'system_class': CartpoleLogCos,
-        'state_cost': '2.5e+1, 1.e+0, 5.0e-1, 1.0e-1',
+        'state_cost': '1.e+0, 2.5e+1, 1.0e-1, 5.0e-1',
         'action_cost': '1.e-1',
         'eps': 6.5e-1,  # eps = 1 => \gamma = 1
         'dt': 1. / 125.,

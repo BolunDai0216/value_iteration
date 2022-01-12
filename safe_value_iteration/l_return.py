@@ -13,7 +13,7 @@ class LReturn:
         self.gam = np.exp(-rho * kwargs.get('dt', 1.0/125.0))
         self.N = np.ceil(np.log(eps / (1. - self.lam)) /
                          np.log(self.lam)).astype(int)
-        self.n_l_returns = int(kwargs.get('T', 5.0) /
+        self.n_timesteps = int(kwargs.get('T', 5.0) /
                                kwargs.get('dt', 1.0/125.0))
 
         """
@@ -24,29 +24,34 @@ class LReturn:
         l_return_vec = [(1-λ), (1-λ)λ, λ^2]
         """
         return_mat = torch.zeros(self.N, self.N)
+        return_mat_value = torch.zeros(self.N, 1)
         l_return_vec = torch.zeros(self.N, 1)
         for i in range(self.N):
             return_mat[i, i:] = self.gam**i
+            return_mat_value[i] = self.gam**(i+1)
             l_return_vec[i] = self.lam**i * (1 - self.lam)
         l_return_vec[-1] = self.lam**(self.N-1)
 
         if kwargs.get('cuda', False):
             self.return_mat = return_mat.cuda()
+            self.return_mat_value = return_mat_value.cuda()
             self.l_return_vec = l_return_vec.cuda()
         else:
             self.return_mat = return_mat
+            self.return_mat_value = return_mat_value
             self.l_return_vec = l_return_vec
 
     def get_returns(self, rewards, values):
         l_returns = []
-        for i in range(self.n_l_returns):
-            horizon = np.min([self.N, self.n_l_returns-i])
+        for i in range(self.n_timesteps):
+            horizon = np.min([self.N, self.n_timesteps-i])
             i_returns = rewards[:, 0, i:i+horizon] @ \
                 self.return_mat[:horizon, :horizon]
-            i_returns += values[:, 0, i:i+horizon]
+            i_returns += values[:, 0, i:i+horizon] @ \
+                self.return_mat_value[:horizon, :]
             i_l_returns = i_returns @ self.l_return_vec[:horizon, :]
             l_returns.append(i_l_returns)
-        l_returns = torch.cat(l_returns, dim=1).view(-1, self.n_l_returns, 1)
+        l_returns = torch.cat(l_returns, dim=1).view(-1, self.n_timesteps, 1)
 
         return l_returns
 
@@ -107,7 +112,56 @@ class ReplayBuffer:
 
 
 def main():
-    pass
+    N = 4
+
+    return_mat = torch.zeros(N, N)
+    for i in range(N):
+        return_mat[i, i:] = 2.0**i
+
+    return_mat_target = torch.tensor([[1.0, 1.0, 1.0, 1.0],
+                                      [0.0, 2.0, 2.0, 2.0],
+                                      [0.0, 0.0, 4.0, 4.0],
+                                      [0.0, 0.0, 0.0, 8.0]])
+
+    return_mat_err = torch.sum(return_mat_target - return_mat).item()
+    assert return_mat_err <= 1e-9
+
+    lam = 1.0
+    N = 4
+
+    l_return_vec = torch.zeros(N, 1)
+    for i in range(N):
+        l_return_vec[i] = lam**i * (1 - lam)
+    l_return_vec[-1] = lam**(N-1)
+
+    l_return_vec_target = torch.tensor([[0.0], [0.0], [0.0], [1.0]])
+    l_return_vec_err = torch.sum(l_return_vec - l_return_vec_target).item()
+    assert l_return_vec_err <= 1e-9
+
+    lam = 0.0
+    N = 5
+
+    l_return_vec = torch.zeros(N, 1)
+    for i in range(N):
+        l_return_vec[i] = lam**i * (1 - lam)
+    l_return_vec[-1] = lam**(N-1)
+
+    l_return_vec_target = torch.tensor([[1.0], [0.0], [0.0], [0.0], [0.0]])
+    l_return_vec_err = torch.sum(l_return_vec - l_return_vec_target).item()
+    assert l_return_vec_err <= 1e-9
+
+    lam = 0.5
+    N = 5
+
+    l_return_vec = torch.zeros(N, 1)
+    for i in range(N):
+        l_return_vec[i] = lam**i * (1 - lam)
+    l_return_vec[-1] = lam**(N-1)
+
+    l_return_vec_target = torch.tensor(
+        [[0.5], [0.25], [0.125], [0.0625], [0.0625]])
+    l_return_vec_err = torch.sum(l_return_vec - l_return_vec_target).item()
+    assert l_return_vec_err <= 1e-9
 
 
 if __name__ == "__main__":
