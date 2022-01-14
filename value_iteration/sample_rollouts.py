@@ -1,5 +1,9 @@
-import torch
+from pdb import set_trace
+
+import cvxpy as cp
 import numpy as np
+import torch
+from cvxpylayers.torch import CvxpyLayer
 
 from value_iteration.utils import trange
 
@@ -8,16 +12,75 @@ class ValueFunPolicy:
     def __init__(self, sys, val_fun):
         self.v = val_fun
         self.sys = sys
+        self.qp = None
 
-    def __call__(self, x, B):
+    def construct_qp(self, n):
+        # Construct QP Cost
+        u_safe = cp.Variable(n)
+        u_target = cp.Parameter(n)
+        objective = cp.Minimize(cp.sum_squares(u_safe - u_target))
+
+        # Construct QP Constraint
+        constraint_lhs = cp.Parameter((n, n))
+        constraint_rhs = cp.Parameter((n))
+        constraints = [constraint_lhs @ u_safe >= constraint_rhs]
+
+        # Construct QP
+        problem = cp.Problem(objective, constraints)
+        assert problem.is_dpp()
+
+        # CVXPYLayer
+        self.qp = CvxpyLayer(problem, parameters=[
+            u_target, constraint_lhs, constraint_rhs], variables=[u_safe])
+
+    def __call__(self, x, B, safe=True, x_lower=-1.5, x_upper=1.5):
         if B is None:
             _, B = self.sys.dyn(x)
+
+        if safe:
+            a, _ = self.sys.dyn(x)
 
         Vi, dVidx = self.v(x)  # negative_definite(*val_fun(x[-1]))
         dVidx = dVidx.transpose(dim0=1, dim1=2)
 
         BT_dVdx = torch.matmul(B.transpose(dim0=1, dim1=2), dVidx)
         ui = self.sys.r.grad_convex_conjugate(BT_dVdx)
+
+        if safe:
+            # ui.shape = [batch_size, 1, 1]
+            zeros = torch.zeros_like(x[:, :1, :])
+            dhdx = torch.cat(
+                [
+                    -2 * x[:, :1, :] + x_lower + x_upper,
+                    zeros,
+                    -2 * 0.1 * x[:, 2:3, :],
+                    zeros,
+                ],
+                dim=2,
+            )
+            h = (x_upper - x[:, :1, :]) * \
+                (x[:, :1, :] - x_lower) - 0.1 * x[:, 2:3, :]
+
+            # Size of QP
+            n = int(ui.shape[0])
+
+            if self.qp is None:
+                self.construct_qp(n)
+
+            # Construct QP Cost
+            ui_qp = ui[:, 0, 0].cpu()
+
+            # Construct QP Constraint
+            constraint_lhs_torch = torch.diag((dhdx @ B)[:, 0, 0]).cpu()
+            constraint_rhs_torch = (-dhdx @ a - 1.0 * h)[:, 0, 0].cpu()
+
+            # Solve
+            solution, = self.qp(
+                ui_qp, constraint_lhs_torch, constraint_rhs_torch)
+            ui_safe = solution.view(-1, 1, 1).cuda()
+
+            return Vi, dVidx, ui_safe
+
         return Vi, dVidx, ui
 
 
@@ -25,11 +88,16 @@ def sample_data(T, n_seeds, val_fun, hyper, sys, config):
     n_seeds = int(n_seeds)
 
     with torch.no_grad():
-        dt_ctrl, f_ctrl = hyper.get('dt_ctrl', hyper['dt']), 1. / hyper.get('dt_ctrl', hyper['dt'])
-        fs_trials = [250., 500., ] # [250., 300., 500.]
+        dt_ctrl, f_ctrl = hyper.get("dt_ctrl", hyper["dt"]), 1.0 / hyper.get(
+            "dt_ctrl", hyper["dt"]
+        )
+        fs_trials = [
+            250.0,
+            500.0,
+        ]  # [250., 300., 500.]
 
         for fs in fs_trials:
-            dt = 1. / fs
+            dt = 1.0 / fs
             n_steps = int(T * fs)
             n_sim_step_per_ctrl = int(fs / f_ctrl)
 
@@ -40,7 +108,7 @@ def sample_data(T, n_seeds, val_fun, hyper, sys, config):
 
         verbose = config.get("verbose", False)
         mode = config.get("mode", "init")
-        downsample = int(fs / config.get("fs_return", 50.))
+        downsample = int(fs / config.get("fs_return", 50.0))
 
         # Actions are determined using the value-function policy:
         pi = ValueFunPolicy(sys, val_fun)
@@ -54,9 +122,17 @@ def sample_data(T, n_seeds, val_fun, hyper, sys, config):
 
         # State Exploration Noise via a Wiener Process:
         # The state-noise is implicitly integrated in execution loop
-        xi_x_alpha = config.get('x_noise', 0.0) * sys.x_lim.view(1, 1, sys.n_state, 1)
-        dist_x_noise = torch.distributions.multivariate_normal.MultivariateNormal(mu_x, covariance_matrix=eye_x)
-        n_x = dist_x_noise.sample((n_steps, n_seeds)).float().to(device).view(n_steps, n_seeds, sys.n_state, 1)
+        xi_x_alpha = config.get("x_noise", 0.0) * \
+            sys.x_lim.view(1, 1, sys.n_state, 1)
+        dist_x_noise = torch.distributions.multivariate_normal.MultivariateNormal(
+            mu_x, covariance_matrix=eye_x
+        )
+        n_x = (
+            dist_x_noise.sample((n_steps, n_seeds))
+            .float()
+            .to(device)
+            .view(n_steps, n_seeds, sys.n_state, 1)
+        )
         n_x = xi_x_alpha.to(n_x.device) / 1.96 * np.sqrt(dt) * n_x
 
         # Action Exploration Noise via an Ornstein–Uhlenbeck process:
@@ -66,19 +142,35 @@ def sample_data(T, n_seeds, val_fun, hyper, sys, config):
         exp_minus = torch.exp(-theta * t).view(-1, 1, 1, 1).to(n_x.device)
         exp_plus = torch.exp(theta * t).view(-1, 1, 1, 1).to(n_x.device)
 
-        xi_u_alpha = config.get('u_noise', 0.0) * sys.u_lim
-        dist_u_noise = torch.distributions.multivariate_normal.MultivariateNormal(mu_u, covariance_matrix=eye_u)
-        n_u = dist_u_noise.sample((n_steps, n_seeds)).float().to(device).view(n_steps, n_seeds, sys.n_act, 1)
-        n_u = xi_u_alpha.to(n_u.device) / 1.96 * exp_minus * torch.cumsum(exp_plus * np.sqrt(dt) * n_u, dim=0)
+        xi_u_alpha = config.get("u_noise", 0.0) * sys.u_lim
+        dist_u_noise = torch.distributions.multivariate_normal.MultivariateNormal(
+            mu_u, covariance_matrix=eye_u
+        )
+        n_u = (
+            dist_u_noise.sample((n_steps, n_seeds))
+            .float()
+            .to(device)
+            .view(n_steps, n_seeds, sys.n_act, 1)
+        )
+        n_u = (
+            xi_u_alpha.to(n_u.device)
+            / 1.96
+            * exp_minus
+            * torch.cumsum(exp_plus * np.sqrt(dt) * n_u, dim=0)
+        )
 
         x, a, V, dVdx, dVdt, B, u, r = [], [], [], [], [], [], [], []
 
         # Sample initial seeds:
         if mode == "test":
             x_start = sys.x_start.float().view(sys.n_state)
-            sigma = torch.diag(sys.x_start_var.float()).view(sys.n_state, sys.n_state)
-            dist_x = torch.distributions.multivariate_normal.MultivariateNormal(x_start, sigma)
-            x0 = dist_x.sample((n_seeds,)).view(-1, sys.n_state, 1).float().to(device)
+            sigma = torch.diag(sys.x_start_var.float()).view(
+                sys.n_state, sys.n_state)
+            dist_x = torch.distributions.multivariate_normal.MultivariateNormal(
+                x_start, sigma
+            )
+            x0 = dist_x.sample((n_seeds,)).view(-1,
+                                                sys.n_state, 1).float().to(device)
 
         elif mode == "init":
             x_init = sys.x_init.float().view(1, sys.n_state, 1)
@@ -89,12 +181,16 @@ def sample_data(T, n_seeds, val_fun, hyper, sys, config):
             raise ValueError
 
         if sys.wrap:
-            x0[:, sys.wrap_i] = torch.remainder(x0[:, sys.wrap_i] + np.pi, 2 * np.pi) - np.pi
+            x0[:, sys.wrap_i] = (
+                torch.remainder(x0[:, sys.wrap_i] + np.pi, 2 * np.pi) - np.pi
+            )
 
         x.append(torch.min(torch.max(x0, -x_lim), x_lim))
 
         t = 0.0
-        for i in trange(int(n_steps), prefix=f"Sample Datapoints", ncols=100, verbose=verbose):
+        for i in trange(
+            int(n_steps), prefix=f"Sample Datapoints", ncols=100, verbose=verbose
+        ):
 
             # Compute dynamics:
             a_t, B_t = sys.dyn(x[-1])
@@ -116,14 +212,18 @@ def sample_data(T, n_seeds, val_fun, hyper, sys, config):
             r.append(-dt * sys.rwd(x[-1], u[-1]))
 
             # Compute next step:
-            xd = (a[-1] + torch.matmul(B[-1], u[-1] + n_u[i])).view(-1, sys.n_state, 1)
+            xd = (a[-1] + torch.matmul(B[-1], u[-1] + n_u[i])
+                  ).view(-1, sys.n_state, 1)
             xn = x[-1] + dt * xd + n_x[i]
 
             # Compute dVdt
             dVdt.append(torch.matmul(dVidx.transpose(dim0=1, dim1=2), xd))
 
             if sys.wrap:
-                xn[:, sys.wrap_i] = torch.remainder(xn[:, sys.wrap_i] + np.pi, 2 * np.pi) - np.pi
+                xn[:, sys.wrap_i] = (
+                    torch.remainder(xn[:, sys.wrap_i] +
+                                    np.pi, 2 * np.pi) - np.pi
+                )
 
             x.append(torch.min(torch.max(xn, -x_lim), x_lim))
             t += dt
